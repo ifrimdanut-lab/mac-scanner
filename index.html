@@ -15,7 +15,9 @@
     content="#1261a0"
   >
 
-  <title>ICHC MAC Scanner</title>
+  <title>
+    ICHC MAC Scanner
+  </title>
 
   <link
     rel="stylesheet"
@@ -31,6 +33,7 @@
 <body>
 
 <div class="app">
+
 
   <header class="header">
 
@@ -55,7 +58,7 @@
     </div>
 
     <div class="version">
-      V1.1.1
+      V1.1.2-ScreenMode
     </div>
 
   </header>
@@ -103,9 +106,45 @@
         </h2>
 
         <p>
-          Point the camera at the MAC Address.
+          Optimized for reading MAC addresses from screens.
         </p>
 
+      </div>
+
+    </div>
+
+
+    <div class="modePanel">
+
+      <div class="modeTitle">
+        Scan Mode
+      </div>
+
+      <div class="modeButtons">
+
+        <button
+          id="normalModeBtn"
+          class="modeBtn"
+          onclick="setScanMode('normal')"
+        >
+          LABEL MODE
+        </button>
+
+        <button
+          id="screenModeBtn"
+          class="modeBtn active"
+          onclick="setScanMode('screen')"
+        >
+          SCREEN MODE
+        </button>
+
+      </div>
+
+      <div
+        id="modeHint"
+        class="modeHint"
+      >
+        Optimized for MAC addresses displayed on monitors, laptops and phones.
       </div>
 
     </div>
@@ -161,7 +200,10 @@
 
       <div class="scanOverlay">
 
-        <div class="scanFrame">
+        <div
+          id="scanFrame"
+          class="scanFrame screenFrame"
+        >
 
           <div class="corner topLeft"></div>
 
@@ -171,10 +213,19 @@
 
           <div class="corner bottomRight"></div>
 
+          <div class="centerLine"></div>
+
         </div>
 
-        <div class="scanHint">
-          KEEP MAC ADDRESS INSIDE FRAME
+        <div
+          id="scanHint"
+          class="scanHint"
+        >
+          PUT ONLY THE MAC LINE INSIDE THE FRAME
+        </div>
+
+        <div class="scanExample">
+          AA:BB:CC:DD:EE:FF
         </div>
 
       </div>
@@ -237,6 +288,18 @@
     </div>
 
 
+    <div class="screenTips">
+
+      <strong>
+        Screen Mode tips:
+      </strong>
+
+      lower the monitor brightness slightly, keep the phone parallel to the screen,
+      and make the MAC address fill most of the green frame.
+
+    </div>
+
+
     <div
       id="ocrStatus"
       class="ocrStatus hidden"
@@ -254,8 +317,7 @@
 
         <div
           id="ocrProgress"
-        >
-        </div>
+        ></div>
 
       </div>
 
@@ -275,7 +337,7 @@
         </h2>
 
         <p>
-          Verify the MAC before saving.
+          Verify the result before saving.
         </p>
 
       </div>
@@ -330,25 +392,15 @@
           </option>
 
           <option>Laptop</option>
-
           <option>Desktop</option>
-
           <option>iPad</option>
-
           <option>iPhone</option>
-
           <option>Android Phone</option>
-
           <option>Tablet</option>
-
           <option>Printer</option>
-
           <option>Access Point</option>
-
           <option>Projector</option>
-
           <option>Smart TV</option>
-
           <option>Other</option>
 
         </select>
@@ -427,6 +479,7 @@
 
     </div>
 
+
     <div
       id="recentList"
       class="recentList"
@@ -442,10 +495,11 @@
 
 
   <footer>
-    ICHC MAC Scanner • V1.1.1
+    ICHC MAC Scanner • V1.1.2-ScreenMode
   </footer>
 
 </div>
+
 
 <script src="app.js"></script>
 
