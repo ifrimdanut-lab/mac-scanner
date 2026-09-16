@@ -1,7 +1,7 @@
 /**
  * ==========================================================
  * ICHC MAC Scanner
- * Version V1.3.2.2
+ * Version V1.3.2.3
  *
  * LAYOUT:
  * 1. LIVE MAC SCAN
@@ -9,13 +9,14 @@
  * 3. LARGE MAC RESULT
  * 4. OCR RESULT / DEVICE DATA
  * 5. REMAINING CAMERA CONTROLS / OTHER CONTENT
- * 6. LOCAL PADDLEOCR - LAST
+ * 6. LOCAL PADDLEOCR
+ * 7. RECENT SCANS - LAST
  *
  * OCR engine / speed unchanged from V1.3.0.
  * ==========================================================
  */
 
-const APP_VERSION = 'V1.3.2.2';
+const APP_VERSION = 'V1.3.2.3';
 
 
 /* ==========================================================
@@ -163,7 +164,7 @@ document.addEventListener(
 
 
 /* ==========================================================
-   V1.3.2.2 - EXACT LAYOUT REORDER
+   V1.3.2.3 - APPLICATION LAYOUT
 ========================================================== */
 
 function reorderApplicationLayout() {
@@ -171,13 +172,14 @@ function reorderApplicationLayout() {
   arrangePrimaryScannerFlow();
 
   movePaddleOCRSectionToBottom();
+
+  moveRecentScansToBottom();
 }
 
 
-/*
- * Finds common parent containing both
- * the camera display and camera controls.
- */
+/* ==========================================================
+   FIND SCANNER WORKSPACE
+========================================================== */
 
 function findScannerWorkspace() {
 
@@ -230,10 +232,9 @@ function findScannerWorkspace() {
 }
 
 
-/*
- * Returns direct child of ancestor
- * containing the requested element.
- */
+/* ==========================================================
+   DIRECT CHILD INSIDE
+========================================================== */
 
 function directChildInside(
   element,
@@ -270,9 +271,9 @@ function directChildInside(
 }
 
 
-/*
- * Find camera display block only.
- */
+/* ==========================================================
+   CAMERA VIEW BLOCK
+========================================================== */
 
 function findCameraViewBlock(
   workspace
@@ -296,224 +297,6 @@ function findCameraViewBlock(
   return directChildInside(
     camera,
     workspace
-  );
-}
-
-
-/* ==========================================================
-   FIND OCR RESULT
-========================================================== */
-
-function findOCRResultCard() {
-
-  const macInput =
-    document.getElementById(
-      'macInput'
-    );
-
-
-  if (
-    macInput
-  ) {
-
-    let current =
-      macInput.parentElement;
-
-
-    while (
-      current &&
-      current !== document.body
-    ) {
-
-      const heading =
-        current.querySelector(
-          'h1, h2, h3, h4, h5, h6'
-        );
-
-
-      if (
-        heading &&
-        String(
-          heading.textContent || ''
-        )
-          .trim()
-          .toLowerCase()
-          .includes(
-            'ocr result'
-          )
-      ) {
-
-        return current;
-      }
-
-
-      current =
-        current.parentElement;
-    }
-  }
-
-
-  return findSectionByHeadingText(
-    'OCR Result'
-  );
-}
-
-
-/* ==========================================================
-   EXACT MAIN FLOW
-========================================================== */
-
-function arrangePrimaryScannerFlow() {
-
-  const workspace =
-    findScannerWorkspace();
-
-
-  const livePanel =
-    document.getElementById(
-      'liveScanPanel'
-    );
-
-
-  const compact =
-    document.getElementById(
-      'compactMacResult'
-    );
-
-
-  const ocrResult =
-    findOCRResultCard();
-
-
-  if (
-    !workspace
-  ) {
-
-    console.warn(
-      'V1.3.2.2: Scanner workspace not found.'
-    );
-
-    return;
-  }
-
-
-  const cameraView =
-    findCameraViewBlock(
-      workspace
-    );
-
-
-  if (
-    !livePanel ||
-    !cameraView ||
-    !compact ||
-    !ocrResult
-  ) {
-
-    console.warn(
-      'V1.3.2.2: Exact scanner flow could not be built.',
-      {
-        livePanel:
-          Boolean(
-            livePanel
-          ),
-
-        cameraView:
-          Boolean(
-            cameraView
-          ),
-
-        compact:
-          Boolean(
-            compact
-          ),
-
-        ocrResult:
-          Boolean(
-            ocrResult
-          )
-      }
-    );
-
-
-    return;
-  }
-
-
-  /*
-   * 1. LIVE MAC SCAN first
-   */
-
-  workspace.insertBefore(
-    livePanel,
-    workspace.firstElementChild
-  );
-
-
-  /*
-   * 2. CAMERA immediately after LIVE
-   */
-
-  livePanel.insertAdjacentElement(
-    'afterend',
-    cameraView
-  );
-
-
-  /*
-   * 3. LARGE MAC immediately after camera
-   */
-
-  cameraView.insertAdjacentElement(
-    'afterend',
-    compact
-  );
-
-
-  /*
-   * 4. OCR Result immediately after MAC
-   */
-
-  compact.insertAdjacentElement(
-    'afterend',
-    ocrResult
-  );
-
-
-  livePanel.style.marginTop =
-    '0';
-
-
-  livePanel.style.marginBottom =
-    '10px';
-
-
-  cameraView.style.marginTop =
-    '0';
-
-
-  cameraView.style.marginBottom =
-    '10px';
-
-
-  compact.style.marginTop =
-    '0';
-
-
-  compact.style.marginBottom =
-    '10px';
-
-
-  ocrResult.style.marginTop =
-    '0';
-
-
-  ocrResult.style.marginBottom =
-    '12px';
-
-
-  console.log(
-    'V1.3.2.2 layout: LIVE → CAMERA → MAC → OCR RESULT.'
   );
 }
 
@@ -596,7 +379,187 @@ function findSectionByHeadingText(
 
 
 /* ==========================================================
-   LOCAL PADDLEOCR -> LAST
+   FIND OCR RESULT CARD
+========================================================== */
+
+function findOCRResultCard() {
+
+  const macInput =
+    document.getElementById(
+      'macInput'
+    );
+
+
+  if (
+    macInput
+  ) {
+
+    let current =
+      macInput.parentElement;
+
+
+    while (
+      current &&
+      current !== document.body
+    ) {
+
+      const heading =
+        current.querySelector(
+          'h1, h2, h3, h4, h5, h6'
+        );
+
+
+      if (
+        heading &&
+        String(
+          heading.textContent || ''
+        )
+          .trim()
+          .toLowerCase()
+          .includes(
+            'ocr result'
+          )
+      ) {
+
+        return current;
+      }
+
+
+      current =
+        current.parentElement;
+    }
+  }
+
+
+  return findSectionByHeadingText(
+    'OCR Result'
+  );
+}
+
+
+/* ==========================================================
+   MAIN FLOW
+========================================================== */
+
+function arrangePrimaryScannerFlow() {
+
+  const workspace =
+    findScannerWorkspace();
+
+
+  const livePanel =
+    document.getElementById(
+      'liveScanPanel'
+    );
+
+
+  const compact =
+    document.getElementById(
+      'compactMacResult'
+    );
+
+
+  const ocrResult =
+    findOCRResultCard();
+
+
+  if (
+    !workspace
+  ) {
+
+    console.warn(
+      'V1.3.2.3: Scanner workspace not found.'
+    );
+
+    return;
+  }
+
+
+  const cameraView =
+    findCameraViewBlock(
+      workspace
+    );
+
+
+  if (
+    !livePanel ||
+    !cameraView ||
+    !compact ||
+    !ocrResult
+  ) {
+
+    console.warn(
+      'V1.3.2.3: Exact scanner flow could not be built.'
+    );
+
+    return;
+  }
+
+
+  workspace.insertBefore(
+    livePanel,
+    workspace.firstElementChild
+  );
+
+
+  livePanel.insertAdjacentElement(
+    'afterend',
+    cameraView
+  );
+
+
+  cameraView.insertAdjacentElement(
+    'afterend',
+    compact
+  );
+
+
+  compact.insertAdjacentElement(
+    'afterend',
+    ocrResult
+  );
+
+
+  livePanel.style.marginTop =
+    '0';
+
+
+  livePanel.style.marginBottom =
+    '10px';
+
+
+  cameraView.style.marginTop =
+    '0';
+
+
+  cameraView.style.marginBottom =
+    '10px';
+
+
+  compact.style.marginTop =
+    '0';
+
+
+  compact.style.marginBottom =
+    '10px';
+
+
+  ocrResult.style.marginTop =
+    '0';
+
+
+  ocrResult.style.marginBottom =
+    '12px';
+
+
+  console.log(
+    'V1.3.2.3 layout: LIVE → CAMERA → MAC → OCR RESULT.'
+  );
+}
+
+
+/* ==========================================================
+   LOCAL PADDLEOCR
 ========================================================== */
 
 function findPaddleOCRCard() {
@@ -666,7 +629,7 @@ function movePaddleOCRSectionToBottom() {
   ) {
 
     console.warn(
-      'V1.3.2.2: Local PaddleOCR section not found.'
+      'V1.3.2.3: Local PaddleOCR section not found.'
     );
 
     return;
@@ -684,6 +647,107 @@ function movePaddleOCRSectionToBottom() {
 
   paddleCard.style.marginBottom =
     '20px';
+}
+
+
+/* ==========================================================
+   RECENT SCANS -> LAST
+========================================================== */
+
+function findRecentScansCard() {
+
+  const recentList =
+    document.getElementById(
+      'recentList'
+    );
+
+
+  if (
+    recentList
+  ) {
+
+    let current =
+      recentList.parentElement;
+
+
+    while (
+      current &&
+      current !== document.body
+    ) {
+
+      const heading =
+        current.querySelector(
+          'h1, h2, h3, h4, h5, h6'
+        );
+
+
+      if (
+        heading &&
+        String(
+          heading.textContent || ''
+        )
+          .trim()
+          .toLowerCase()
+          .includes(
+            'recent scans'
+          )
+      ) {
+
+        return current;
+      }
+
+
+      current =
+        current.parentElement;
+    }
+  }
+
+
+  return findSectionByHeadingText(
+    'Recent Scans'
+  );
+}
+
+
+function moveRecentScansToBottom() {
+
+  const recentCard =
+    findRecentScansCard();
+
+
+  if (
+    !recentCard ||
+    !recentCard.parentElement
+  ) {
+
+    console.warn(
+      'V1.3.2.3: Recent Scans section not found.'
+    );
+
+    return;
+  }
+
+
+  /*
+   * appendChild moves it after Local PaddleOCR.
+   */
+
+  recentCard.parentElement.appendChild(
+    recentCard
+  );
+
+
+  recentCard.style.marginTop =
+    '20px';
+
+
+  recentCard.style.marginBottom =
+    '20px';
+
+
+  console.log(
+    'V1.3.2.3: Recent Scans moved to last position.'
+  );
 }
 
 
