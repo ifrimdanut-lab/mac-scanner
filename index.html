@@ -6,18 +6,15 @@
 
   <meta charset="UTF-8">
 
-
   <meta
     name="viewport"
     content="width=device-width, initial-scale=1, viewport-fit=cover"
   >
 
-
   <meta
     name="theme-color"
     content="#1261a0"
   >
-
 
   <title>
     ICHC MAC Scanner
@@ -45,13 +42,20 @@
 <div class="app">
 
 
+  <!-- =====================================================
+       HEADER
+  ====================================================== -->
+
   <header class="header">
 
+
     <div class="brand">
+
 
       <div class="logoBox">
         IT
       </div>
+
 
       <div>
 
@@ -65,16 +69,28 @@
 
       </div>
 
+
     </div>
 
-    <div class="version">
-      V1.1.0
+
+    <div
+      id="versionBadge"
+      class="version"
+    >
+      V1.1.5
     </div>
+
 
   </header>
 
 
+
+  <!-- =====================================================
+       STATS
+  ====================================================== -->
+
   <div class="statsCard">
+
 
     <div>
 
@@ -91,39 +107,49 @@
 
     </div>
 
+
     <div
       id="systemStatus"
       class="statusIndicator"
     >
 
-      <span
-        class="statusDot"
-      ></span>
+      <span class="statusDot"></span>
 
       Ready
 
     </div>
 
+
   </div>
 
 
+
+  <!-- =====================================================
+       CAMERA
+  ====================================================== -->
+
   <section class="card">
+
 
     <div class="sectionHeader">
 
       <div>
 
         <h2>
-          Scan MAC Address
+          Guided Capture
         </h2>
 
         <p>
-          Point the camera at the device label.
+          Place only the MAC address inside the green box.
         </p>
 
       </div>
 
     </div>
+
+
+
+    <!-- CAMERA SELECT -->
 
 
     <div
@@ -145,7 +171,55 @@
     </div>
 
 
-    <div class="cameraContainer">
+
+    <!-- ZOOM -->
+
+
+    <div class="zoomPanel">
+
+
+      <div class="zoomHeader">
+
+        <span>
+          Camera Zoom
+        </span>
+
+        <strong id="zoomValue">
+          1.0×
+        </strong>
+
+      </div>
+
+
+      <input
+        id="zoomSlider"
+        class="zoomSlider"
+        type="range"
+        min="1"
+        max="3"
+        step="0.1"
+        value="1"
+        oninput="changeZoom()"
+      >
+
+
+      <div class="zoomHint">
+        On iPhone, use 1.5×–2.5× when the MAC text is small.
+      </div>
+
+
+    </div>
+
+
+
+    <!-- LIVE CAMERA -->
+
+
+    <div
+      id="cameraContainer"
+      class="cameraContainer"
+    >
+
 
       <video
         id="camera"
@@ -169,32 +243,59 @@
         </strong>
 
         <span>
-          Press Start Camera
+          Press START CAMERA
         </span>
 
       </div>
 
 
-      <div class="scanFrame">
 
-        <div class="corner tl"></div>
-        <div class="corner tr"></div>
-        <div class="corner bl"></div>
-        <div class="corner br"></div>
+      <!-- GUIDE -->
 
-        <div class="scanLine"></div>
+
+      <div class="guideOverlay">
+
+
+        <div class="guideLabel">
+          ALIGN MAC ADDRESS HERE
+        </div>
+
+
+        <div class="captureGuide">
+
+
+          <div class="guideCorner topLeft"></div>
+
+          <div class="guideCorner topRight"></div>
+
+          <div class="guideCorner bottomLeft"></div>
+
+          <div class="guideCorner bottomRight"></div>
+
+
+          <div class="guideScanLine"></div>
+
+
+        </div>
+
+
+        <div class="guideExample">
+          AA:BB:CC:DD:EE:FF
+        </div>
+
 
       </div>
+
 
     </div>
 
 
-    <canvas
-      id="captureCanvas"
-    ></canvas>
+
+    <!-- CAMERA ACTIONS -->
 
 
     <div class="cameraActions">
+
 
       <button
         id="startCameraBtn"
@@ -204,19 +305,23 @@
         START CAMERA
       </button>
 
+
       <button
-        id="scanBtn"
-        class="btn btnPrimary"
-        onclick="scanMac()"
+        id="captureBtn"
+        class="btn btnCapture"
+        onclick="captureGuidedImage()"
         disabled
       >
-        SCAN MAC
+        📸 CAPTURE
       </button>
+
 
     </div>
 
 
+
     <div class="cameraActions secondRow">
+
 
       <button
         id="switchCameraBtn"
@@ -226,6 +331,7 @@
       >
         ↻ SWITCH CAMERA
       </button>
+
 
       <label
         class="btn btnSecondary uploadButton"
@@ -243,7 +349,98 @@
 
       </label>
 
+
     </div>
+
+
+  </section>
+
+
+
+  <!-- =====================================================
+       CAPTURED IMAGE
+  ====================================================== -->
+
+  <section
+    id="capturedSection"
+    class="card hidden"
+  >
+
+
+    <div class="sectionHeader">
+
+
+      <div>
+
+        <h2>
+          Captured MAC Area
+        </h2>
+
+        <p>
+          Verify that the MAC text is sharp and readable.
+        </p>
+
+      </div>
+
+
+      <span class="captureBadge">
+        STATIC IMAGE
+      </span>
+
+
+    </div>
+
+
+
+    <div class="capturedImageContainer">
+
+
+      <canvas
+        id="captureCanvas"
+      ></canvas>
+
+
+    </div>
+
+
+
+    <div class="captureQualityHint">
+
+      <strong>
+        Check the image before OCR.
+      </strong>
+
+      The characters should be large, sharp and fully visible.
+
+    </div>
+
+
+
+    <div class="capturedActions">
+
+
+      <button
+        class="btn btnSecondary"
+        onclick="retakePhoto()"
+      >
+        ↻ RETAKE
+      </button>
+
+
+      <button
+        id="readMacBtn"
+        class="btn btnPrimary"
+        onclick="readCapturedMac()"
+      >
+        🔍 READ MAC
+      </button>
+
+
+    </div>
+
+
+
+    <!-- OCR STATUS -->
 
 
     <div
@@ -251,7 +448,9 @@
       class="ocrStatus hidden"
     >
 
+
       <div class="spinner"></div>
+
 
       <div>
 
@@ -264,46 +463,59 @@
         <div
           id="ocrProgress"
         >
-          OCR processing
+          Preparing OCR
         </div>
 
       </div>
 
+
     </div>
+
 
   </section>
 
 
+
+  <!-- =====================================================
+       DETECTED MAC
+  ====================================================== -->
+
   <section class="card">
 
+
     <div class="sectionHeader">
+
 
       <div>
 
         <h2>
-          Detected MAC
+          MAC Address
         </h2>
 
         <p>
-          Verify before saving.
+          Compare the detected value with the captured image.
         </p>
 
       </div>
 
+
     </div>
+
 
 
     <div
       id="macState"
       class="macState waiting"
     >
-      Waiting for scan
+      Waiting for capture
     </div>
 
 
+
     <label class="fieldLabel">
-      MAC Address
+      Detected / Manual MAC Address
     </label>
+
 
     <input
       id="macInput"
@@ -316,19 +528,61 @@
       oninput="handleMacInput()"
     >
 
+
+
     <div
       id="macValidation"
       class="validationText"
     ></div>
 
 
+
+    <!-- CONFIRMATION -->
+
+
+    <div
+      id="confirmPanel"
+      class="confirmPanel hidden"
+    >
+
+
+      <div class="confirmWarning">
+
+        <strong>
+          Visual verification required
+        </strong>
+
+        Compare the MAC above with the captured image.
+
+      </div>
+
+
+      <button
+        id="confirmMacBtn"
+        class="btn btnConfirm"
+        onclick="confirmDetectedMac()"
+      >
+        ✓ MAC IS CORRECT
+      </button>
+
+
+    </div>
+
+
+
+    <!-- DEVICE DATA -->
+
+
     <div class="formGrid">
 
+
       <div>
+
 
         <label class="fieldLabel">
           Device Type
         </label>
+
 
         <select
           id="deviceType"
@@ -338,28 +592,43 @@
           <option value="">
             Select device
           </option>
+
           <option>Laptop</option>
+
           <option>Desktop</option>
+
           <option>iPad</option>
+
           <option>iPhone</option>
+
           <option>Android Phone</option>
+
           <option>Tablet</option>
+
           <option>Printer</option>
+
           <option>Access Point</option>
+
           <option>Projector</option>
+
           <option>Smart TV</option>
+
           <option>Other</option>
 
         </select>
 
+
       </div>
+
 
 
       <div>
 
+
         <label class="fieldLabel">
           Location
         </label>
+
 
         <input
           id="location"
@@ -367,20 +636,25 @@
           placeholder="e.g. Room 201"
         >
 
+
       </div>
 
+
     </div>
+
 
 
     <label class="fieldLabel">
       Note
     </label>
 
+
     <textarea
       id="note"
       class="input textarea"
       placeholder="Optional note"
     ></textarea>
+
 
 
     <button
@@ -392,8 +666,14 @@
       SAVE & SCAN NEXT
     </button>
 
+
   </section>
 
+
+
+  <!-- =====================================================
+       MESSAGE
+  ====================================================== -->
 
   <div
     id="messageBox"
@@ -401,9 +681,16 @@
   ></div>
 
 
+
+  <!-- =====================================================
+       RECENT
+  ====================================================== -->
+
   <section class="card">
 
+
     <div class="sectionHeader">
+
 
       <div>
 
@@ -417,12 +704,14 @@
 
       </div>
 
+
       <button
         class="smallBtn"
         onclick="loadDashboard()"
       >
         Refresh
       </button>
+
 
     </div>
 
@@ -438,14 +727,20 @@
 
     </div>
 
+
   </section>
 
 
+
   <footer>
-    ICHC MAC Scanner • External Camera Engine • V1.1.0
+
+    ICHC MAC Scanner • Guided Capture Mode • V1.1.5
+
   </footer>
 
+
 </div>
+
 
 
 <script src="app.js"></script>
