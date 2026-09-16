@@ -1,14 +1,18 @@
 /**
  * ==========================================================
  * ICHC MAC Scanner
- * Version V1.2.1
+ * Version V1.2.2
  * Local PaddleOCR Engine
  * Permanent Tailscale Funnel
+ *
+ * NEW:
+ * - Visible connection provider
+ * - Visible OCR endpoint
  * ==========================================================
  */
 
 const APP_VERSION =
-  'V1.2.1';
+  'V1.2.2';
 
 
 /**
@@ -24,20 +28,12 @@ const GOOGLE_API_URL =
 /**
  * ==========================================================
  * OCR BACKEND
- *
- * Permanent Tailscale Funnel:
- *
- * https://pc-home.tail51a762.ts.net
- *
- * Protection automatically removes:
- *
- * /health
- * /ocr
- * trailing /
- *
- * if accidentally added.
  * ==========================================================
  */
+
+const OCR_CONNECTION_NAME =
+  'Tailscale';
+
 
 const OCR_API_URL_RAW =
   'https://pc-home.tail51a762.ts.net';
@@ -93,9 +89,18 @@ document.addEventListener(
 
 
     console.log(
+      'OCR Connection:',
+      OCR_CONNECTION_NAME
+    );
+
+
+    console.log(
       'OCR Base URL:',
       OCR_API_URL
     );
+
+
+    renderConnectionInfo();
 
 
     setScanMode(
@@ -122,21 +127,156 @@ document.addEventListener(
 
 /**
  * ==========================================================
+ * CONNECTION INFORMATION
+ *
+ * Automatically inserts:
+ *
+ * Connection: Tailscale
+ * Endpoint: pc-home.tail51a762.ts.net
+ *
+ * directly below OCR server status.
+ * ==========================================================
+ */
+
+function renderConnectionInfo() {
+
+  const existing =
+    document.getElementById(
+      'ocrConnectionInfo'
+    );
+
+
+  if (
+    existing
+  ) {
+
+    existing.remove();
+
+  }
+
+
+  const panel =
+    document.getElementById(
+      'ocrServerPanel'
+    );
+
+
+  if (
+    !panel
+  ) {
+
+    return;
+
+  }
+
+
+  const info =
+    document.createElement(
+      'div'
+    );
+
+
+  info.id =
+    'ocrConnectionInfo';
+
+
+  info.style.marginTop =
+    '8px';
+
+
+  info.style.paddingTop =
+    '8px';
+
+
+  info.style.borderTop =
+    '1px solid rgba(0,0,0,0.08)';
+
+
+  info.style.fontSize =
+    '12px';
+
+
+  info.style.lineHeight =
+    '1.6';
+
+
+  info.style.color =
+    '#526273';
+
+
+  info.innerHTML =
+
+    '<div>' +
+
+      '<strong>' +
+
+        'Connection:' +
+
+      '</strong> ' +
+
+      escapeHtml(
+        OCR_CONNECTION_NAME
+      ) +
+
+    '</div>' +
+
+    '<div>' +
+
+      '<strong>' +
+
+        'Endpoint:' +
+
+      '</strong> ' +
+
+      escapeHtml(
+        getOCRHostname()
+      ) +
+
+    '</div>';
+
+
+  panel.appendChild(
+    info
+  );
+
+}
+
+
+
+/**
+ * ==========================================================
+ * GET OCR HOSTNAME
+ * ==========================================================
+ */
+
+function getOCRHostname() {
+
+  try {
+
+    const url =
+      new URL(
+        OCR_API_URL
+      );
+
+
+    return url.hostname;
+
+
+  } catch (
+    error
+  ) {
+
+    return OCR_API_URL;
+
+  }
+
+}
+
+
+
+/**
+ * ==========================================================
  * NORMALIZE OCR BASE URL
- *
- * Examples:
- *
- * https://abc.ts.net/
- * ->
- * https://abc.ts.net
- *
- * https://abc.ts.net/health
- * ->
- * https://abc.ts.net
- *
- * https://abc.ts.net/ocr
- * ->
- * https://abc.ts.net
  * ==========================================================
  */
 
@@ -160,19 +300,11 @@ function normalizeOCRBaseURL(
   }
 
 
-  /*
-   * Remove query string.
-   */
-
   url =
     url.split(
       '?'
     )[0];
 
-
-  /*
-   * Remove hash.
-   */
 
   url =
     url.split(
@@ -180,20 +312,12 @@ function normalizeOCRBaseURL(
     )[0];
 
 
-  /*
-   * Remove trailing slash(es).
-   */
-
   url =
     url.replace(
       /\/+$/,
       ''
     );
 
-
-  /*
-   * Remove accidental endpoints.
-   */
 
   url =
     url.replace(
@@ -208,10 +332,6 @@ function normalizeOCRBaseURL(
       ''
     );
 
-
-  /*
-   * Clean trailing slash again.
-   */
 
   url =
     url.replace(
@@ -518,6 +638,14 @@ function setOCRServerState(
     online
 
   );
+
+
+  /*
+   * Re-render connection info because changing
+   * server panel classes should never remove it.
+   */
+
+  renderConnectionInfo();
 
 }
 
@@ -1619,7 +1747,8 @@ async function sendCanvasToOCR(
 
     'Sending image to PaddleOCR...',
 
-    'Connecting to OCR server'
+    'Connecting through ' +
+    OCR_CONNECTION_NAME
 
   );
 
@@ -1749,7 +1878,11 @@ async function sendCanvasToOCR(
 
       true,
 
-      'PaddleOCR online'
+      'PaddleOCR online • ' +
+      (
+        result.version ||
+        'ready'
+      )
 
     );
 
