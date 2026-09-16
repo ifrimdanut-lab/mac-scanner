@@ -2,66 +2,25 @@
  * ==========================================================
  * ICHC MAC Scanner
  *
- * Version: V1.1.5
- * Guided Capture Mode
- *
+ * Version: V1.1.1
+ * Fast MAC Recognition
  * ==========================================================
  */
 
 
 /**
  * ==========================================================
- * CONFIGURATION
+ * CONFIG
  * ==========================================================
- *
- * IMPORTANT:
- *
- * Replace the value below with your real Apps Script
- * Web App URL ending in /exec
  */
 
 const API_URL =
-  'https://script.google.com/a/macros/ichc.ro/s/AKfycbzDAauThmGXzKtRIYZMbgutyJI3XO_r5uRLuLhqTG8putr6wpGcfE38_dmYmdEi9XY/exec';
+  'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
 
 
 const APP_VERSION =
-  'V1.1.5';
+  'V1.1.1';
 
-
-const OCR_TIMEOUT_MS =
-  12000;
-
-
-/**
- * Crop dimensions relative to the live camera.
- *
- * These values correspond approximately
- * with the green guide in index.html.
- */
-
-const GUIDE_WIDTH_RATIO =
-  0.90;
-
-
-const GUIDE_HEIGHT_RATIO =
-  0.28;
-
-
-/**
- * Static captured image is enlarged
- * before OCR.
- */
-
-const OCR_SCALE =
-  2.25;
-
-
-
-/**
- * ==========================================================
- * GLOBAL STATE
- * ==========================================================
- */
 
 let cameraStream =
   null;
@@ -87,22 +46,6 @@ let ocrBusy =
   false;
 
 
-let capturedImageReady =
-  false;
-
-
-let currentDetectedMac =
-  null;
-
-
-let macConfirmed =
-  false;
-
-
-let manualEdit =
-  false;
-
-
 
 /**
  * ==========================================================
@@ -116,50 +59,15 @@ document.addEventListener(
 
   async function () {
 
-
-    updateVersionUI();
-
-
-    resetMacState();
-
-
     loadDashboard();
 
+    handleMacInput();
 
     await discoverCameras();
-
 
   }
 
 );
-
-
-
-/**
- * ==========================================================
- * VERSION
- * ==========================================================
- */
-
-function updateVersionUI() {
-
-
-  const version =
-    document.getElementById(
-      'versionBadge'
-    );
-
-
-  if (
-    version
-  ) {
-
-    version.textContent =
-      APP_VERSION;
-
-  }
-
-}
 
 
 
@@ -171,24 +79,15 @@ function updateVersionUI() {
 
 async function discoverCameras() {
 
-
   if (
-
     !navigator.mediaDevices ||
-
     !navigator.mediaDevices.enumerateDevices
-
   ) {
 
-
     showMessage(
-
-      'This browser does not support camera access.',
-
+      'Camera is not supported by this browser.',
       'error'
-
     );
-
 
     return;
 
@@ -197,22 +96,16 @@ async function discoverCameras() {
 
   try {
 
-
     const devices =
-
       await navigator
         .mediaDevices
         .enumerateDevices();
 
 
-
     videoDevices =
-
       devices.filter(
 
-        function (
-          device
-        ) {
+        function (device) {
 
           return (
             device.kind ===
@@ -227,19 +120,11 @@ async function discoverCameras() {
     populateCameraList();
 
 
-  } catch (
-    error
-  ) {
-
+  } catch (error) {
 
     console.error(
-
-      'Camera discovery error:',
-
       error
-
     );
-
 
   }
 
@@ -255,16 +140,13 @@ async function discoverCameras() {
 
 function populateCameraList() {
 
-
   const select =
-
     document.getElementById(
       'cameraSelect'
     );
 
 
   const row =
-
     document.getElementById(
       'cameraSelectRow'
     );
@@ -285,17 +167,13 @@ function populateCameraList() {
 
 
   if (
-
     videoDevices.length ===
     0
-
   ) {
-
 
     row.classList.add(
       'hidden'
     );
-
 
     return;
 
@@ -309,9 +187,7 @@ function populateCameraList() {
       index
     ) {
 
-
       const option =
-
         document.createElement(
           'option'
         );
@@ -322,9 +198,7 @@ function populateCameraList() {
 
 
       option.textContent =
-
         device.label ||
-
         (
           'Camera ' +
           (index + 1)
@@ -334,7 +208,6 @@ function populateCameraList() {
       select.appendChild(
         option
       );
-
 
     }
 
@@ -359,9 +232,7 @@ async function startCamera(
   requestedDeviceId = null
 ) {
 
-
   const video =
-
     document.getElementById(
       'camera'
     );
@@ -369,51 +240,36 @@ async function startCamera(
 
   try {
 
-
     stopCamera();
 
 
-    resetCaptureState();
-
-
     let constraints;
-
 
 
     if (
       requestedDeviceId
     ) {
 
-
       constraints = {
 
         video: {
 
           deviceId: {
-
             exact:
               requestedDeviceId
-
           },
-
 
           width: {
-
             ideal:
               1920
-
           },
 
-
           height: {
-
             ideal:
               1080
-
           }
 
         },
-
 
         audio:
           false
@@ -423,36 +279,26 @@ async function startCamera(
 
     } else {
 
-
       constraints = {
 
         video: {
 
           facingMode: {
-
             ideal:
               'environment'
-
           },
-
 
           width: {
-
             ideal:
               1920
-
           },
 
-
           height: {
-
             ideal:
               1080
-
           }
 
         },
-
 
         audio:
           false
@@ -462,9 +308,7 @@ async function startCamera(
     }
 
 
-
     cameraStream =
-
       await navigator
         .mediaDevices
         .getUserMedia(
@@ -472,82 +316,59 @@ async function startCamera(
         );
 
 
-
     video.srcObject =
       cameraStream;
-
 
 
     await video.play();
 
 
-
     document
-
       .getElementById(
         'cameraPlaceholder'
       )
-
       .classList
-
       .add(
         'hidden'
       );
 
 
-
     document
-
       .getElementById(
-        'captureBtn'
+        'scanBtn'
       )
-
       .disabled =
       false;
 
 
-
     document
-
       .getElementById(
         'switchCameraBtn'
       )
-
       .disabled =
       false;
 
 
-
     document
-
       .getElementById(
         'startCameraBtn'
       )
-
       .textContent =
       'RESTART CAMERA';
 
 
-
-    const activeTrack =
-
+    const track =
       cameraStream
         .getVideoTracks()[0];
 
 
-
     const settings =
-
-      activeTrack
-        .getSettings();
-
+      track.getSettings();
 
 
     currentDeviceId =
-
       settings.deviceId ||
       null;
-
 
 
     await discoverCameras();
@@ -556,24 +377,13 @@ async function startCamera(
     syncCameraSelector();
 
 
-    configureZoom(
-      activeTrack
-    );
-
-
     setSystemStatus(
-
       'Camera ready',
-
       true
-
     );
 
 
-  } catch (
-    error
-  ) {
-
+  } catch (error) {
 
     console.error(
       error
@@ -583,7 +393,6 @@ async function startCamera(
     handleCameraError(
       error
     );
-
 
   }
 
@@ -599,7 +408,6 @@ async function startCamera(
 
 function stopCamera() {
 
-
   if (
     !cameraStream
   ) {
@@ -610,9 +418,7 @@ function stopCamera() {
 
 
   cameraStream
-
     .getTracks()
-
     .forEach(
 
       function (
@@ -643,75 +449,52 @@ function handleCameraError(
   error
 ) {
 
-
   let message =
-
     'Camera could not be started.';
 
 
-
-  switch (
-    error.name
+  if (
+    error.name ===
+    'NotAllowedError'
   ) {
 
+    message =
+      'Camera permission was denied.';
 
-    case 'NotAllowedError':
-
-      message =
-        'Camera permission was denied. Allow camera access in browser settings.';
-
-      break;
+  }
 
 
-    case 'NotFoundError':
+  if (
+    error.name ===
+    'NotFoundError'
+  ) {
 
-      message =
-        'No camera was detected on this device.';
+    message =
+      'No camera was detected.';
 
-      break;
-
-
-    case 'NotReadableError':
-
-      message =
-        'The camera may already be used by another application.';
-
-      break;
+  }
 
 
-    case 'OverconstrainedError':
+  if (
+    error.name ===
+    'NotReadableError'
+  ) {
 
-      message =
-        'The selected camera is not available.';
-
-      break;
-
-
-    case 'SecurityError':
-
-      message =
-        'Camera access requires HTTPS.';
-
-      break;
+    message =
+      'Camera is being used by another application.';
 
   }
 
 
   setSystemStatus(
-
     'Camera unavailable',
-
     false
-
   );
 
 
   showMessage(
-
     message,
-
     'error'
-
   );
 
 }
@@ -726,9 +509,7 @@ function handleCameraError(
 
 async function changeCamera() {
 
-
   const select =
-
     document.getElementById(
       'cameraSelect'
     );
@@ -758,15 +539,13 @@ async function changeCamera() {
 
 /**
  * ==========================================================
- * SYNC CAMERA
+ * SYNC CAMERA SELECTOR
  * ==========================================================
  */
 
 function syncCameraSelector() {
 
-
   const select =
-
     document.getElementById(
       'cameraSelect'
     );
@@ -777,10 +556,8 @@ function syncCameraSelector() {
     currentDeviceId
   ) {
 
-
     select.value =
       currentDeviceId;
-
 
   }
 
@@ -796,76 +573,53 @@ function syncCameraSelector() {
 
 async function switchCamera() {
 
-
   if (
-
     videoDevices.length <
     2
-
   ) {
 
-
     showMessage(
-
       'Only one camera is available.',
-
       'warning'
-
     );
-
 
     return;
 
   }
 
 
-
   const currentIndex =
-
     videoDevices.findIndex(
 
       function (
         device
       ) {
 
-
         return (
-
           device.deviceId ===
           currentDeviceId
-
         );
-
 
       }
 
     );
 
 
-
   currentCameraIndex =
-
     currentIndex >= 0
-
       ? currentIndex + 1
-
       : 0;
 
 
-
   if (
-
     currentCameraIndex >=
     videoDevices.length
-
   ) {
-
 
     currentCameraIndex =
       0;
 
   }
-
 
 
   await startCamera(
@@ -882,1366 +636,86 @@ async function switchCamera() {
 
 /**
  * ==========================================================
- * ZOOM CAPABILITIES
+ * SCAN MAC
  * ==========================================================
  */
 
-function configureZoom(
-  track
-) {
-
-
-  const slider =
-
-    document.getElementById(
-      'zoomSlider'
-    );
-
-
-  if (
-    !slider ||
-    !track
-  ) {
-
-    return;
-
-  }
-
-
-  try {
-
-
-    const capabilities =
-
-      track.getCapabilities
-        ? track.getCapabilities()
-        : {};
-
-
-
-    if (
-      capabilities.zoom
-    ) {
-
-
-      slider.min =
-        capabilities.zoom.min;
-
-
-      slider.max =
-        capabilities.zoom.max;
-
-
-      slider.step =
-        capabilities.zoom.step ||
-        0.1;
-
-
-
-      const settings =
-        track.getSettings();
-
-
-
-      const current =
-
-        settings.zoom ||
-        capabilities.zoom.min;
-
-
-
-      slider.value =
-        current;
-
-
-      document
-
-        .getElementById(
-          'zoomValue'
-        )
-
-        .textContent =
-
-        Number(
-          current
-        ).toFixed(
-          1
-        ) +
-        '×';
-
-
-      slider.disabled =
-        false;
-
-
-    } else {
-
-
-      /*
-       * Browser does not expose hardware zoom.
-       *
-       * We still retain the UI but use
-       * CSS digital zoom for preview.
-       */
-
-      slider.min =
-        1;
-
-
-      slider.max =
-        3;
-
-
-      slider.step =
-        0.1;
-
-
-      slider.value =
-        1;
-
-
-      slider.disabled =
-        false;
-
-
-    }
-
-
-  } catch (
-    error
-  ) {
-
-
-    console.warn(
-      'Zoom capability error:',
-      error
-    );
-
-
-  }
-
-}
-
-
-
-/**
- * ==========================================================
- * CHANGE ZOOM
- * ==========================================================
- */
-
-async function changeZoom() {
-
-
-  const slider =
-
-    document.getElementById(
-      'zoomSlider'
-    );
-
-
-  const video =
-
-    document.getElementById(
-      'camera'
-    );
-
-
-  const zoom =
-
-    Number(
-      slider.value
-    );
-
-
-  document
-
-    .getElementById(
-      'zoomValue'
-    )
-
-    .textContent =
-
-    zoom.toFixed(
-      1
-    ) +
-    '×';
-
-
-
-  if (
-    !cameraStream
-  ) {
-
-
-    video.style.transform =
-
-      'scale(' +
-      zoom +
-      ')';
-
-
-    return;
-
-  }
-
-
-
-  const track =
-
-    cameraStream
-      .getVideoTracks()[0];
-
-
-  try {
-
-
-    const capabilities =
-
-      track.getCapabilities
-        ? track.getCapabilities()
-        : {};
-
-
-
-    if (
-      capabilities.zoom
-    ) {
-
-
-      await track.applyConstraints({
-
-        advanced: [
-
-          {
-            zoom:
-              zoom
-          }
-
-        ]
-
-      });
-
-
-      video.style.transform =
-        'scale(1)';
-
-
-    } else {
-
-
-      /*
-       * Digital preview zoom.
-       */
-
-      video.style.transform =
-
-        'scale(' +
-        zoom +
-        ')';
-
-
-    }
-
-
-  } catch (
-    error
-  ) {
-
-
-    console.warn(
-
-      'Hardware zoom unavailable.',
-
-      error
-
-    );
-
-
-    video.style.transform =
-
-      'scale(' +
-      zoom +
-      ')';
-
-
-  }
-
-}
-
-
-
-/**
- * ==========================================================
- * GUIDED CAPTURE
- * ==========================================================
- */
-
-function captureGuidedImage() {
-
-
-  const video =
-
-    document.getElementById(
-      'camera'
-    );
-
-
-  if (
-
-    !video.videoWidth ||
-
-    !video.videoHeight
-
-  ) {
-
-
-    showMessage(
-
-      'Camera is not ready.',
-
-      'warning'
-
-    );
-
-
-    return;
-
-  }
-
-
-
-  const canvas =
-
-    document.getElementById(
-      'captureCanvas'
-    );
-
-
-  const ctx =
-
-    canvas.getContext(
-
-      '2d',
-
-      {
-
-        willReadFrequently:
-          true
-
-      }
-
-    );
-
-
-
-  const sourceWidth =
-    video.videoWidth;
-
-
-  const sourceHeight =
-    video.videoHeight;
-
-
-
-  const cropWidth =
-
-    Math.floor(
-
-      sourceWidth *
-      GUIDE_WIDTH_RATIO
-
-    );
-
-
-
-  const cropHeight =
-
-    Math.floor(
-
-      sourceHeight *
-      GUIDE_HEIGHT_RATIO
-
-    );
-
-
-
-  const startX =
-
-    Math.floor(
-
-      (
-        sourceWidth -
-        cropWidth
-      ) / 2
-
-    );
-
-
-
-  const startY =
-
-    Math.floor(
-
-      (
-        sourceHeight -
-        cropHeight
-      ) / 2
-
-    );
-
-
-
-  canvas.width =
-
-    Math.round(
-
-      cropWidth *
-      OCR_SCALE
-
-    );
-
-
-
-  canvas.height =
-
-    Math.round(
-
-      cropHeight *
-      OCR_SCALE
-
-    );
-
-
-
-  ctx.imageSmoothingEnabled =
-    true;
-
-
-  ctx.imageSmoothingQuality =
-    'high';
-
-
-
-  ctx.drawImage(
-
-    video,
-
-    startX,
-
-    startY,
-
-    cropWidth,
-
-    cropHeight,
-
-    0,
-
-    0,
-
-    canvas.width,
-
-    canvas.height
-
-  );
-
-
-
-  capturedImageReady =
-    true;
-
-
-
-  currentDetectedMac =
-    null;
-
-
-  macConfirmed =
-    false;
-
-
-  manualEdit =
-    false;
-
-
-
-  document
-
-    .getElementById(
-      'capturedSection'
-    )
-
-    .classList
-
-    .remove(
-      'hidden'
-    );
-
-
-
-  document
-
-    .getElementById(
-      'confirmPanel'
-    )
-
-    .classList
-
-    .add(
-      'hidden'
-    );
-
-
-
-  document
-
-    .getElementById(
-      'macInput'
-    )
-
-    .value =
-    '';
-
-
-
-  document
-
-    .getElementById(
-      'saveBtn'
-    )
-
-    .disabled =
-    true;
-
-
-
-  setMacState(
-
-    'waiting',
-
-    'Captured image ready'
-
-  );
-
-
-
-  document
-
-    .getElementById(
-      'macValidation'
-    )
-
-    .textContent =
-
-    'Review the captured image, then press READ MAC.';
-
-
-
-  document
-
-    .getElementById(
-      'capturedSection'
-    )
-
-    .scrollIntoView({
-
-      behavior:
-        'smooth',
-
-      block:
-        'start'
-
-    });
-
-
-
-  vibrateShort();
-
-}
-
-
-
-/**
- * ==========================================================
- * RETAKE
- * ==========================================================
- */
-
-function retakePhoto() {
-
-
-  capturedImageReady =
-    false;
-
-
-  currentDetectedMac =
-    null;
-
-
-  macConfirmed =
-    false;
-
-
-  manualEdit =
-    false;
-
-
-
-  document
-
-    .getElementById(
-      'capturedSection'
-    )
-
-    .classList
-
-    .add(
-      'hidden'
-    );
-
-
-
-  document
-
-    .getElementById(
-      'macInput'
-    )
-
-    .value =
-    '';
-
-
-
-  document
-
-    .getElementById(
-      'confirmPanel'
-    )
-
-    .classList
-
-    .add(
-      'hidden'
-    );
-
-
-
-  document
-
-    .getElementById(
-      'saveBtn'
-    )
-
-    .disabled =
-    true;
-
-
-
-  setMacState(
-
-    'waiting',
-
-    'Waiting for capture'
-
-  );
-
-
-
-  document
-
-    .getElementById(
-      'macValidation'
-    )
-
-    .textContent =
-    '';
-
-
-
-  window.scrollTo({
-
-    top:
-      0,
-
-    behavior:
-      'smooth'
-
-  });
-
-}
-
-
-
-/**
- * ==========================================================
- * PHOTO / IMAGE INPUT
- * ==========================================================
- */
-
-function scanUploadedPhoto(
-  event
-) {
-
-
-  const file =
-
-    event
-      .target
-      .files[0];
-
-
-  if (
-    !file
-  ) {
-
-    return;
-
-  }
-
-
-
-  const reader =
-    new FileReader();
-
-
-
-  reader.onload =
-
-    function (
-      e
-    ) {
-
-
-      const img =
-        new Image();
-
-
-
-      img.onload =
-
-        function () {
-
-
-          const canvas =
-
-            document.getElementById(
-              'captureCanvas'
-            );
-
-
-
-          const ctx =
-
-            canvas.getContext(
-
-              '2d',
-
-              {
-
-                willReadFrequently:
-                  true
-
-              }
-
-            );
-
-
-
-          const maxWidth =
-            2400;
-
-
-
-          let width =
-            img.width;
-
-
-          let height =
-            img.height;
-
-
-
-          if (
-            width >
-            maxWidth
-          ) {
-
-
-            const ratio =
-
-              maxWidth /
-              width;
-
-
-
-            width =
-              maxWidth;
-
-
-
-            height =
-
-              Math.round(
-
-                height *
-                ratio
-
-              );
-
-
-          }
-
-
-
-          canvas.width =
-            width;
-
-
-          canvas.height =
-            height;
-
-
-
-          ctx.drawImage(
-
-            img,
-
-            0,
-
-            0,
-
-            width,
-
-            height
-
-          );
-
-
-
-          capturedImageReady =
-            true;
-
-
-
-          currentDetectedMac =
-            null;
-
-
-          macConfirmed =
-            false;
-
-
-          manualEdit =
-            false;
-
-
-
-          document
-
-            .getElementById(
-              'capturedSection'
-            )
-
-            .classList
-
-            .remove(
-              'hidden'
-            );
-
-
-
-          document
-
-            .getElementById(
-              'macInput'
-            )
-
-            .value =
-            '';
-
-
-
-          setMacState(
-
-            'waiting',
-
-            'Photo ready'
-
-          );
-
-
-
-          document
-
-            .getElementById(
-              'macValidation'
-            )
-
-            .textContent =
-
-            'Review the image, then press READ MAC.';
-
-
-
-          document
-
-            .getElementById(
-              'capturedSection'
-            )
-
-            .scrollIntoView({
-
-              behavior:
-                'smooth',
-
-              block:
-                'start'
-
-            });
-
-
-        };
-
-
-
-      img.src =
-        e.target.result;
-
-
-    };
-
-
-
-  reader.readAsDataURL(
-    file
-  );
-
-}
-
-
-
-/**
- * ==========================================================
- * OCR ENTRY
- * ==========================================================
- */
-
-async function readCapturedMac() {
-
-
-  if (
-    !capturedImageReady
-  ) {
-
-
-    showMessage(
-
-      'Capture an image first.',
-
-      'warning'
-
-    );
-
-
-    return;
-
-  }
-
-
+async function scanMac() {
 
   if (
     ocrBusy
   ) {
 
-
     return;
 
   }
 
+
+  const video =
+    document.getElementById(
+      'camera'
+    );
+
+
+  if (
+    !video ||
+    !video.videoWidth ||
+    !video.videoHeight
+  ) {
+
+    showMessage(
+      'Camera is not ready.',
+      'warning'
+    );
+
+    return;
+
+  }
 
 
   ocrBusy =
     true;
 
 
-
-  currentDetectedMac =
-    null;
-
-
-  macConfirmed =
-    false;
-
-
-  manualEdit =
-    false;
-
-
-
-  const readButton =
-
+  const button =
     document.getElementById(
-      'readMacBtn'
+      'scanBtn'
     );
 
 
-
-  readButton.disabled =
+  button.disabled =
     true;
-
 
 
   try {
 
+    setOCRStatus(
 
-    const sourceCanvas =
+      true,
 
-      document.getElementById(
-        'captureCanvas'
-      );
+      'Capturing image...',
 
-
-
-    const worker =
-      await getOCRWorker();
-
-
-
-    const variants = [
-
-      {
-        name:
-          'Original',
-
-        canvas:
-          cloneCanvas(
-            sourceCanvas
-          )
-      },
-
-      {
-        name:
-          'Contrast',
-
-        canvas:
-          createContrastCanvas(
-            sourceCanvas
-          )
-      },
-
-      {
-        name:
-          'Sharp',
-
-        canvas:
-          createSharpCanvas(
-            sourceCanvas
-          )
-      }
-
-    ];
-
-
-
-    const candidates =
-      [];
-
-
-
-    for (
-
-      let i = 0;
-
-      i <
-      variants.length;
-
-      i++
-
-    ) {
-
-
-      setOCRStatus(
-
-        true,
-
-        'Reading captured image...',
-
-        variants[i].name +
-        ' • ' +
-        (i + 1) +
-        '/' +
-        variants.length
-
-      );
-
-
-
-      try {
-
-
-        const result =
-
-          await recognizeWithTimeout(
-
-            worker,
-
-            variants[i].canvas
-
-          );
-
-
-
-        const text =
-
-          result &&
-          result.data
-
-            ? result.data.text || ''
-
-            : '';
-
-
-
-        console.log(
-
-          'OCR ' +
-          variants[i].name +
-          ':',
-
-          text
-
-        );
-
-
-
-        const detected =
-
-          extractMacCandidates(
-            text
-          );
-
-
-
-        detected.forEach(
-
-          function (
-            candidate
-          ) {
-
-
-            candidates.push({
-
-              mac:
-                candidate.mac,
-
-              score:
-                candidate.score,
-
-              variant:
-                variants[i].name
-
-            });
-
-
-          }
-
-        );
-
-
-      } catch (
-        error
-      ) {
-
-
-        console.warn(
-
-          'OCR pass failed:',
-
-          error
-
-        );
-
-
-      }
-
-
-    }
-
-
-
-    const winner =
-
-      selectBestCandidate(
-        candidates
-      );
-
-
-
-    if (
-      !winner
-    ) {
-
-
-      currentDetectedMac =
-        null;
-
-
-
-      setMacState(
-
-        'invalid',
-
-        'MAC NOT DETECTED'
-
-      );
-
-
-
-      document
-
-        .getElementById(
-          'macValidation'
-        )
-
-        .textContent =
-
-        'OCR could not read a reliable MAC. Retake closer or enter it manually.';
-
-
-
-      document
-
-        .getElementById(
-          'confirmPanel'
-        )
-
-        .classList
-
-        .add(
-          'hidden'
-        );
-
-
-
-      showMessage(
-
-        'MAC not detected. Retake the image closer and make sure only the MAC line is inside the guide.',
-
-        'warning'
-
-      );
-
-
-
-      return;
-
-    }
-
-
-
-    currentDetectedMac =
-      winner.mac;
-
-
-
-    const input =
-
-      document.getElementById(
-        'macInput'
-      );
-
-
-
-    input.value =
-      winner.mac;
-
-
-
-    setMacState(
-
-      'candidate',
-
-      'OCR CANDIDATE'
+      'Keep the MAC Address inside the frame'
 
     );
 
 
-
-    document
-
-      .getElementById(
-        'macValidation'
-      )
-
-      .textContent =
-
-      'OCR candidate detected. Compare it carefully with the captured image.';
-
-
-
-    document
-
-      .getElementById(
-        'confirmPanel'
-      )
-
-      .classList
-
-      .remove(
-        'hidden'
+    const canvas =
+      captureCameraFrame(
+        video
       );
 
 
-
-    document
-
-      .getElementById(
-        'saveBtn'
-      )
-
-      .disabled =
-      true;
-
-
-
-    showMessage(
-
-      'OCR detected: ' +
-      winner.mac +
-      '. Please visually confirm it.',
-
-      'warning'
-
+    await runFastOCR(
+      canvas
     );
 
 
-
-    document
-
-      .getElementById(
-        'macInput'
-      )
-
-      .scrollIntoView({
-
-        behavior:
-          'smooth',
-
-        block:
-          'center'
-
-      });
-
-
-  } catch (
-    error
-  ) {
-
+  } catch (error) {
 
     console.error(
       error
     );
-
 
 
     showMessage(
@@ -2256,19 +730,17 @@ async function readCapturedMac() {
 
   } finally {
 
-
-    setOCRStatus(
-      false
-    );
-
-
     ocrBusy =
       false;
 
 
-    readButton.disabled =
+    button.disabled =
       false;
 
+
+    setOCRStatus(
+      false
+    );
 
   }
 
@@ -2278,40 +750,242 @@ async function readCapturedMac() {
 
 /**
  * ==========================================================
- * USER CONFIRMATION
+ * CAMERA CAPTURE
  * ==========================================================
  */
 
-function confirmDetectedMac() {
+function captureCameraFrame(
+  video
+) {
 
-
-  const input =
-
+  const canvas =
     document.getElementById(
-      'macInput'
+      'scanCanvas'
     );
 
 
-
-  const mac =
-
-    normalizeMac(
-      input.value
+  const context =
+    canvas.getContext(
+      '2d',
+      {
+        willReadFrequently:
+          true
+      }
     );
 
+
+  const width =
+    video.videoWidth;
+
+
+  const height =
+    video.videoHeight;
+
+
+  const cropWidth =
+    Math.floor(
+      width *
+      0.90
+    );
+
+
+  const cropHeight =
+    Math.floor(
+      height *
+      0.52
+    );
+
+
+  const startX =
+    Math.floor(
+      (
+        width -
+        cropWidth
+      ) / 2
+    );
+
+
+  const startY =
+    Math.floor(
+      (
+        height -
+        cropHeight
+      ) / 2
+    );
+
+
+  canvas.width =
+    cropWidth *
+    2;
+
+
+  canvas.height =
+    cropHeight *
+    2;
+
+
+  context.imageSmoothingEnabled =
+    true;
+
+
+  context.imageSmoothingQuality =
+    'high';
+
+
+  context.drawImage(
+
+    video,
+
+    startX,
+    startY,
+
+    cropWidth,
+    cropHeight,
+
+    0,
+    0,
+
+    canvas.width,
+    canvas.height
+
+  );
+
+
+  return canvas;
+
+}
+
+
+
+/**
+ * ==========================================================
+ * FAST OCR
+ * ==========================================================
+ */
+
+async function runFastOCR(
+  sourceCanvas
+) {
+
+  const worker =
+    await getOCRWorker();
+
+
+  const variants = [
+
+    {
+      name:
+        'Original',
+
+      canvas:
+        cloneCanvas(
+          sourceCanvas
+        )
+    },
+
+    {
+      name:
+        'High Contrast',
+
+      canvas:
+        createHighContrastCanvas(
+          sourceCanvas
+        )
+    },
+
+    {
+      name:
+        'Threshold',
+
+      canvas:
+        createThresholdCanvas(
+          sourceCanvas
+        )
+    }
+
+  ];
+
+
+  let bestCandidate =
+    null;
+
+
+  for (
+    let i = 0;
+    i < variants.length;
+    i++
+  ) {
+
+    setOCRStatus(
+
+      true,
+
+      'Reading MAC Address...',
+
+      variants[i].name +
+      ' • ' +
+      (i + 1) +
+      '/' +
+      variants.length
+
+    );
+
+
+    const result =
+      await worker.recognize(
+        variants[i].canvas
+      );
+
+
+    const text =
+      result &&
+      result.data
+        ? result.data.text || ''
+        : '';
+
+
+    console.log(
+      'OCR ' +
+      variants[i].name +
+      ':',
+      text
+    );
+
+
+    const candidate =
+      findBestMacCandidate(
+        text
+      );
+
+
+    if (
+      candidate
+    ) {
+
+      bestCandidate =
+        candidate;
+
+
+      /*
+       * V1.1.1 deliberately exits early.
+       *
+       * If a valid MAC pattern is found,
+       * show it immediately.
+       */
+
+      break;
+
+    }
+
+  }
 
 
   if (
-    !mac
+    bestCandidate
   ) {
 
-
-    showMessage(
-
-      'The MAC Address is not valid.',
-
-      'error'
-
+    setDetectedMac(
+      bestCandidate
     );
 
 
@@ -2320,345 +994,35 @@ function confirmDetectedMac() {
   }
 
 
-
-  currentDetectedMac =
-    mac;
-
-
-  macConfirmed =
-    true;
-
-
-  manualEdit =
-    false;
-
-
-
-  input.value =
-    mac;
-
-
-
   setMacState(
-
-    'valid',
-
-    'VISUALLY VERIFIED'
-
+    'invalid',
+    'MAC NOT FOUND'
   );
 
 
-
   document
-
     .getElementById(
       'macValidation'
     )
-
     .textContent =
-
-    'MAC confirmed by user • Ready to save.';
-
+    'Could not detect a MAC Address. Move closer and try again.';
 
 
   document
-
-    .getElementById(
-      'macValidation'
-    )
-
-    .style.color =
-    '#16864b';
-
-
-
-  document
-
-    .getElementById(
-      'confirmPanel'
-    )
-
-    .classList
-
-    .add(
-      'hidden'
-    );
-
-
-
-  document
-
     .getElementById(
       'saveBtn'
     )
-
     .disabled =
-    false;
-
-
-
-  vibrateSuccess();
-
+    true;
 
 
   showMessage(
 
-    'MAC confirmed: ' +
-    mac,
+    'MAC Address not detected. Try moving closer to the text.',
 
-    'success'
+    'warning'
 
   );
-
-}
-
-
-
-/**
- * ==========================================================
- * MANUAL INPUT
- * ==========================================================
- */
-
-function handleMacInput() {
-
-
-  const input =
-
-    document.getElementById(
-      'macInput'
-    );
-
-
-
-  let raw =
-
-    input
-      .value
-      .toUpperCase()
-
-      .replace(
-
-        /[^0-9A-F]/g,
-
-        ''
-
-      );
-
-
-
-  raw =
-
-    raw.substring(
-      0,
-      12
-    );
-
-
-
-  const groups =
-    [];
-
-
-
-  for (
-
-    let i = 0;
-
-    i < raw.length;
-
-    i += 2
-
-  ) {
-
-
-    groups.push(
-
-      raw.substring(
-
-        i,
-
-        i + 2
-
-      )
-
-    );
-
-
-  }
-
-
-
-  input.value =
-
-    groups.join(
-      ':'
-    );
-
-
-
-  /*
-   * If user edits OCR result,
-   * previous visual confirmation is invalidated.
-   */
-
-  macConfirmed =
-    false;
-
-
-  manualEdit =
-    true;
-
-
-
-  const mac =
-
-    normalizeMac(
-      input.value
-    );
-
-
-
-  if (
-    mac
-  ) {
-
-
-    input.value =
-      mac;
-
-
-
-    setMacState(
-
-      'candidate',
-
-      'MANUAL / EDITED MAC'
-
-    );
-
-
-
-    document
-
-      .getElementById(
-        'macValidation'
-      )
-
-      .textContent =
-
-      'Valid format. Verify it visually and press MAC IS CORRECT.';
-
-
-
-    document
-
-      .getElementById(
-        'macValidation'
-      )
-
-      .style.color =
-      '#84590b';
-
-
-
-    document
-
-      .getElementById(
-        'confirmPanel'
-      )
-
-      .classList
-
-      .remove(
-        'hidden'
-      );
-
-
-
-  } else {
-
-
-    document
-
-      .getElementById(
-        'confirmPanel'
-      )
-
-      .classList
-
-      .add(
-        'hidden'
-      );
-
-
-
-    document
-
-      .getElementById(
-        'saveBtn'
-      )
-
-      .disabled =
-      true;
-
-
-
-    if (
-      input.value
-    ) {
-
-
-      setMacState(
-
-        'invalid',
-
-        'INVALID FORMAT'
-
-      );
-
-
-
-      document
-
-        .getElementById(
-          'macValidation'
-        )
-
-        .textContent =
-
-        'Incomplete or invalid MAC Address.';
-
-
-    } else {
-
-
-      setMacState(
-
-        'waiting',
-
-        capturedImageReady
-          ? 'Waiting for OCR'
-          : 'Waiting for capture'
-
-      );
-
-
-
-      document
-
-        .getElementById(
-          'macValidation'
-        )
-
-        .textContent =
-        '';
-
-
-    }
-
-
-  }
 
 }
 
@@ -2672,17 +1036,13 @@ function handleMacInput() {
 
 async function getOCRWorker() {
 
-
   if (
     ocrWorker
   ) {
 
-
     return ocrWorker;
 
-
   }
-
 
 
   setOCRStatus(
@@ -2691,83 +1051,16 @@ async function getOCRWorker() {
 
     'Loading OCR engine...',
 
-    'First use may take a few seconds.'
+    'First scan may take a few seconds'
 
   );
 
 
-
   ocrWorker =
-
     await Tesseract
       .createWorker(
-
-        'eng',
-
-        1,
-
-        {
-
-          logger:
-
-            function (
-              message
-            ) {
-
-
-              if (
-
-                message.status &&
-
-                message.progress !==
-                undefined
-
-              ) {
-
-
-                const percent =
-
-                  Math.round(
-
-                    message.progress *
-                    100
-
-                  );
-
-
-
-                if (
-                  percent > 0
-                ) {
-
-
-                  document
-
-                    .getElementById(
-                      'ocrProgress'
-                    )
-
-                    .textContent =
-
-                    message.status +
-                    ' ' +
-                    percent +
-                    '%';
-
-
-                }
-
-
-              }
-
-
-            }
-
-
-        }
-
+        'eng'
       );
-
 
 
   await ocrWorker.setParameters({
@@ -2781,7 +1074,6 @@ async function getOCRWorker() {
   });
 
 
-
   return ocrWorker;
 
 }
@@ -2790,783 +1082,457 @@ async function getOCRWorker() {
 
 /**
  * ==========================================================
- * OCR TIMEOUT
+ * FIND MAC CANDIDATE
  * ==========================================================
  */
 
-function recognizeWithTimeout(
-
-  worker,
-
-  image
-
-) {
-
-
-  return Promise.race([
-
-
-    worker.recognize(
-      image
-    ),
-
-
-    new Promise(
-
-      function (
-        resolve,
-        reject
-      ) {
-
-
-        setTimeout(
-
-          function () {
-
-
-            reject(
-
-              new Error(
-                'OCR timeout'
-              )
-
-            );
-
-
-          },
-
-          OCR_TIMEOUT_MS
-
-        );
-
-
-      }
-
-    )
-
-
-  ]);
-
-}
-
-
-
-/**
- * ==========================================================
- * MAC EXTRACTION
- * ==========================================================
- */
-
-function extractMacCandidates(
+function findBestMacCandidate(
   text
 ) {
-
 
   if (
     !text
   ) {
 
-
-    return [];
+    return null;
 
   }
 
 
-
   const source =
-
     String(text)
       .toUpperCase();
 
 
-
-  const candidates =
-    [];
-
-
-
-  /**
-   * Exact colon format
-   */
-
-  addMatches(
-
-    candidates,
-
-    source,
-
-    /(?:[0-9A-F]{2}:){5}[0-9A-F]{2}/g,
-
-    120
-
+  console.log(
+    'OCR source:',
+    source
   );
 
 
-
   /**
-   * Dash format
-   */
-
-  addMatches(
-
-    candidates,
-
-    source,
-
-    /(?:[0-9A-F]{2}-){5}[0-9A-F]{2}/g,
-
-    115
-
-  );
-
-
-
-  /**
-   * Spaces
-   */
-
-  addMatches(
-
-    candidates,
-
-    source,
-
-    /(?:[0-9A-F]{2}\s+){5}[0-9A-F]{2}/g,
-
-    105
-
-  );
-
-
-
-  /**
-   * Cisco format
-   */
-
-  addMatches(
-
-    candidates,
-
-    source,
-
-    /\b[0-9A-F]{4}\.[0-9A-F]{4}\.[0-9A-F]{4}\b/g,
-
-    105
-
-  );
-
-
-
-  /**
-   * OCR tolerant colon/dash format.
+   * Standard MAC:
    *
-   * Example:
-   * 48:EA:62:CB:B6:8O
+   * AA:BB:CC:DD:EE:FF
    */
 
-  const tolerant =
-
+  let match =
     source.match(
-
-      /(?:[0-9A-Z]{2}[:\-]){5}[0-9A-Z]{2}/g
-
+      /(?:[0-9A-F]{2}:){5}[0-9A-F]{2}/
     );
-
 
 
   if (
-    tolerant
+    match
   ) {
 
-
-    tolerant.forEach(
-
-      function (
-        raw
-      ) {
-
-
-        const corrected =
-
-          correctSeparatedMacOCR(
-            raw
-          );
-
-
-
-        if (
-          corrected
-        ) {
-
-
-          candidates.push({
-
-            mac:
-              corrected,
-
-            score:
-              90
-
-          });
-
-
-        }
-
-
-      }
-
+    return normalizeMac(
+      match[0]
     );
-
 
   }
 
 
+  /**
+   * Dash:
+   *
+   * AA-BB-CC-DD-EE-FF
+   */
+
+  match =
+    source.match(
+      /(?:[0-9A-F]{2}-){5}[0-9A-F]{2}/
+    );
+
+
+  if (
+    match
+  ) {
+
+    return normalizeMac(
+      match[0]
+    );
+
+  }
+
 
   /**
-   * Compact MAC.
+   * Spaces:
    *
-   * Accepted only when OCR text contains
-   * a MAC-related keyword.
+   * AA BB CC DD EE FF
+   */
+
+  match =
+    source.match(
+      /(?:[0-9A-F]{2}\s+){5}[0-9A-F]{2}/
+    );
+
+
+  if (
+    match
+  ) {
+
+    return normalizeMac(
+      match[0]
+    );
+
+  }
+
+
+  /**
+   * Cisco:
+   *
+   * AABB.CCDD.EEFF
+   */
+
+  match =
+    source.match(
+      /\b[0-9A-F]{4}\.[0-9A-F]{4}\.[0-9A-F]{4}\b/
+    );
+
+
+  if (
+    match
+  ) {
+
+    return normalizeMac(
+      match[0]
+    );
+
+  }
+
+
+  /**
+   * Compact:
+   *
+   * AABBCCDDEEFF
+   */
+
+  match =
+    source.match(
+      /\b[0-9A-F]{12}\b/
+    );
+
+
+  if (
+    match
+  ) {
+
+    return normalizeMac(
+      match[0]
+    );
+
+  }
+
+
+  /**
+   * OCR-cleaned search.
+   *
+   * Remove obvious whitespace and punctuation
+   * between hexadecimal characters.
+   */
+
+  const cleaned =
+    source.replace(
+      /[^0-9A-F]/g,
+      ''
+    );
+
+
+  /**
+   * V1.1.1 allowed sliding search.
+   *
+   * This made it more permissive than later versions.
    */
 
   if (
-    containsMacKeyword(
-      source
-    )
+    cleaned.length >=
+    12
   ) {
 
-
-    const compact =
-
-      source.match(
-        /\b[0-9A-F]{12}\b/g
-      );
-
-
-
-    if (
-      compact
+    for (
+      let i = 0;
+      i <= cleaned.length - 12;
+      i++
     ) {
 
-
-      compact.forEach(
-
-        function (
-          value
-        ) {
-
-
-          const mac =
-
-            normalizeMac(
-              value
-            );
+      const part =
+        cleaned.substring(
+          i,
+          i + 12
+        );
 
 
+      if (
+        /^[0-9A-F]{12}$/
+          .test(
+            part
+          )
+      ) {
+
+        return normalizeMac(
+          part
+        );
+
+      }
+
+    }
+
+  }
+
+
+  return null;
+
+}
+
+
+
+/**
+ * ==========================================================
+ * DETECTED MAC
+ * ==========================================================
+ */
+
+function setDetectedMac(
+  mac
+) {
+
+  const normalized =
+    normalizeMac(
+      mac
+    );
+
+
+  if (
+    !normalized
+  ) {
+
+    return;
+
+  }
+
+
+  document
+    .getElementById(
+      'macInput'
+    )
+    .value =
+    normalized;
+
+
+  setMacState(
+    'valid',
+    'MAC DETECTED'
+  );
+
+
+  document
+    .getElementById(
+      'macValidation'
+    )
+    .textContent =
+    'Valid MAC Address detected by OCR.';
+
+
+  document
+    .getElementById(
+      'macValidation'
+    )
+    .style.color =
+    '#16864b';
+
+
+  document
+    .getElementById(
+      'saveBtn'
+    )
+    .disabled =
+    false;
+
+
+  showMessage(
+
+    'MAC detected: ' +
+    normalized,
+
+    'success'
+
+  );
+
+
+  vibrateSuccess();
+
+}
+
+
+
+/**
+ * ==========================================================
+ * PHOTO OCR
+ * ==========================================================
+ */
+
+function scanUploadedPhoto(
+  event
+) {
+
+  const file =
+    event.target.files[0];
+
+
+  if (
+    !file
+  ) {
+
+    return;
+
+  }
+
+
+  const reader =
+    new FileReader();
+
+
+  reader.onload =
+    function (
+      e
+    ) {
+
+      const image =
+        new Image();
+
+
+      image.onload =
+        async function () {
 
           if (
-            mac
+            ocrBusy
           ) {
 
-
-            candidates.push({
-
-              mac:
-                mac,
-
-              score:
-                85
-
-            });
-
+            return;
 
           }
 
 
-        }
+          ocrBusy =
+            true;
 
-      );
 
+          try {
 
-    }
+            const canvas =
+              document.createElement(
+                'canvas'
+              );
 
 
-  }
+            let width =
+              image.width;
 
 
+            let height =
+              image.height;
 
-  return candidates;
 
-}
+            const maxWidth =
+              2000;
 
 
+            if (
+              width >
+              maxWidth
+            ) {
 
-/**
- * ==========================================================
- * ADD PATTERN MATCHES
- * ==========================================================
- */
+              const ratio =
+                maxWidth /
+                width;
 
-function addMatches(
 
-  list,
+              width =
+                maxWidth;
 
-  source,
 
-  regex,
+              height =
+                Math.round(
+                  height *
+                  ratio
+                );
 
-  score
+            }
 
-) {
 
+            canvas.width =
+              width;
 
-  const matches =
 
-    source.match(
-      regex
-    );
+            canvas.height =
+              height;
 
 
+            const context =
+              canvas.getContext(
+                '2d',
+                {
+                  willReadFrequently:
+                    true
+                }
+              );
 
-  if (
-    !matches
-  ) {
 
+            context.drawImage(
 
-    return;
+              image,
 
+              0,
+              0,
 
-  }
+              width,
+              height
 
+            );
 
 
-  matches.forEach(
+            await runFastOCR(
+              canvas
+            );
 
-    function (
-      value
-    ) {
 
+          } catch (error) {
 
-      const mac =
+            showMessage(
 
-        normalizeMac(
-          value
-        );
+              'OCR error: ' +
+              error.message,
 
+              'error'
 
+            );
 
-      if (
-        mac
-      ) {
 
+          } finally {
 
-        list.push({
+            ocrBusy =
+              false;
 
-          mac:
-            mac,
 
-          score:
-            score
+            setOCRStatus(
+              false
+            );
 
-        });
-
-
-      }
-
-
-    }
-
-  );
-
-}
-
-
-
-/**
- * ==========================================================
- * OCR CHARACTER CORRECTION
- *
- * Applied only to strings already shaped
- * like a MAC with separators.
- * ==========================================================
- */
-
-function correctSeparatedMacOCR(
-  raw
-) {
-
-
-  const groups =
-
-    String(raw)
-
-      .toUpperCase()
-
-      .split(
-        /[:-]/
-      );
-
-
-
-  if (
-    groups.length !==
-    6
-  ) {
-
-
-    return null;
-
-
-  }
-
-
-
-  const conversion = {
-
-    O:
-      '0',
-
-    Q:
-      '0',
-
-    I:
-      '1',
-
-    L:
-      '1',
-
-    S:
-      '5',
-
-    G:
-      '6'
-
-  };
-
-
-
-  const result =
-    [];
-
-
-
-  for (
-    const group
-    of groups
-  ) {
-
-
-    if (
-      group.length !==
-      2
-    ) {
-
-
-      return null;
-
-
-    }
-
-
-
-    let converted =
-      '';
-
-
-
-    for (
-      const char
-      of group
-    ) {
-
-
-      if (
-        /[0-9A-F]/
-          .test(
-            char
-          )
-      ) {
-
-
-        converted +=
-          char;
-
-
-      } else if (
-        conversion[
-          char
-        ]
-      ) {
-
-
-        converted +=
-          conversion[
-            char
-          ];
-
-
-      } else {
-
-
-        return null;
-
-
-      }
-
-
-    }
-
-
-
-    result.push(
-      converted
-    );
-
-
-  }
-
-
-
-  return normalizeMac(
-
-    result.join(
-      ':'
-    )
-
-  );
-
-}
-
-
-
-/**
- * ==========================================================
- * KEYWORD CHECK
- * ==========================================================
- */
-
-function containsMacKeyword(
-  text
-) {
-
-
-  const keywords = [
-
-    'MAC',
-
-    'MAC ADDRESS',
-
-    'PHYSICAL ADDRESS',
-
-    'WLAN',
-
-    'WIRELESS',
-
-    'WIFI',
-
-    'WI-FI',
-
-    'ETHERNET'
-
-  ];
-
-
-
-  return keywords.some(
-
-    function (
-      keyword
-    ) {
-
-
-      return text.includes(
-        keyword
-      );
-
-
-    }
-
-  );
-
-}
-
-
-
-/**
- * ==========================================================
- * SELECT BEST OCR CANDIDATE
- * ==========================================================
- */
-
-function selectBestCandidate(
-  candidates
-) {
-
-
-  if (
-
-    !candidates ||
-
-    candidates.length ===
-    0
-
-  ) {
-
-
-    return null;
-
-
-  }
-
-
-
-  const table =
-    {};
-
-
-
-  candidates.forEach(
-
-    function (
-      item
-    ) {
-
-
-      if (
-        !table[
-          item.mac
-        ]
-      ) {
-
-
-        table[
-          item.mac
-        ] = {
-
-          mac:
-            item.mac,
-
-          votes:
-            0,
-
-          score:
-            0
+          }
 
         };
 
 
-      }
+      image.src =
+        e.target.result;
+
+    };
 
 
-
-      table[
-        item.mac
-      ].votes++;
-
-
-
-      table[
-        item.mac
-      ].score +=
-        item.score;
-
-
-    }
-
+  reader.readAsDataURL(
+    file
   );
-
-
-
-  const list =
-
-    Object.values(
-      table
-    );
-
-
-
-  list.sort(
-
-    function (
-      a,
-      b
-    ) {
-
-
-      if (
-        b.votes !==
-        a.votes
-      ) {
-
-
-        return (
-          b.votes -
-          a.votes
-        );
-
-
-      }
-
-
-
-      return (
-        b.score -
-        a.score
-      );
-
-
-    }
-
-  );
-
-
-
-  const winner =
-    list[0];
-
-
-
-  /**
-   * Safety:
-   *
-   * If two different MACs have equal vote count
-   * and very similar scores, do not guess.
-   */
-
-  if (
-    list.length > 1
-  ) {
-
-
-    const second =
-      list[1];
-
-
-
-    if (
-
-      winner.votes ===
-      second.votes &&
-
-      Math.abs(
-        winner.score -
-        second.score
-      ) < 15
-
-    ) {
-
-
-      return null;
-
-
-    }
-
-
-  }
-
-
-
-  return winner;
 
 }
 
@@ -3574,7 +1540,7 @@ function selectBestCandidate(
 
 /**
  * ==========================================================
- * IMAGE CLONE
+ * IMAGE VARIANTS
  * ==========================================================
  */
 
@@ -3582,13 +1548,10 @@ function cloneCanvas(
   source
 ) {
 
-
   const canvas =
-
     document.createElement(
       'canvas'
     );
-
 
 
   canvas.width =
@@ -3599,34 +1562,21 @@ function cloneCanvas(
     source.height;
 
 
-
-  const ctx =
-
+  const context =
     canvas.getContext(
-
       '2d',
-
       {
-
         willReadFrequently:
           true
-
       }
-
     );
 
 
-
-  ctx.drawImage(
-
+  context.drawImage(
     source,
-
     0,
-
     0
-
   );
-
 
 
   return canvas;
@@ -3637,124 +1587,91 @@ function cloneCanvas(
 
 /**
  * ==========================================================
- * CONTRAST
+ * HIGH CONTRAST
  * ==========================================================
  */
 
-function createContrastCanvas(
+function createHighContrastCanvas(
   source
 ) {
 
-
   const canvas =
-
     cloneCanvas(
       source
     );
 
 
-
-  const ctx =
-
+  const context =
     canvas.getContext(
-
       '2d',
-
       {
-
         willReadFrequently:
           true
-
       }
-
     );
 
 
-
-  const imageData =
-
-    ctx.getImageData(
+  const image =
+    context.getImageData(
 
       0,
-
       0,
 
       canvas.width,
-
       canvas.height
 
     );
 
 
-
   const data =
-    imageData.data;
-
-
-
-  const contrast =
-    1.45;
-
+    image.data;
 
 
   for (
-
     let i = 0;
-
     i < data.length;
-
     i += 4
-
   ) {
-
 
     const gray =
 
-      data[i] *
-      .299
+      (
+        data[i] *
+        0.299
+      )
 
       +
 
-      data[i + 1] *
-      .587
+      (
+        data[i + 1] *
+        0.587
+      )
 
       +
 
-      data[i + 2] *
-      .114;
-
+      (
+        data[i + 2] *
+        0.114
+      );
 
 
     let value =
-
       (
         gray -
         128
-      )
-
-      *
-
-      contrast
-
-      +
-
+      ) *
+      1.6 +
       128;
 
 
-
     value =
-
       Math.max(
-
         0,
-
         Math.min(
           255,
           value
         )
-
       );
-
 
 
     data[i] =
@@ -3768,21 +1685,14 @@ function createContrastCanvas(
     data[i + 2] =
       value;
 
-
   }
 
 
-
-  ctx.putImageData(
-
-    imageData,
-
+  context.putImageData(
+    image,
     0,
-
     0
-
   );
-
 
 
   return canvas;
@@ -3793,73 +1703,269 @@ function createContrastCanvas(
 
 /**
  * ==========================================================
- * SHARPEN
+ * THRESHOLD
  * ==========================================================
  */
 
-function createSharpCanvas(
+function createThresholdCanvas(
   source
 ) {
 
-
   const canvas =
-
     cloneCanvas(
       source
     );
 
 
-
-  const ctx =
-
+  const context =
     canvas.getContext(
-
       '2d',
-
       {
-
         willReadFrequently:
           true
-
       }
+    );
+
+
+  const image =
+    context.getImageData(
+
+      0,
+      0,
+
+      canvas.width,
+      canvas.height
 
     );
 
 
-
-  /**
-   * Browser-safe lightweight sharpening:
-   * draw enlarged image over itself
-   * with contrast filter.
-   */
-
-  ctx.filter =
-    'contrast(145%) brightness(105%)';
+  const data =
+    image.data;
 
 
+  for (
+    let i = 0;
+    i < data.length;
+    i += 4
+  ) {
 
-  ctx.drawImage(
+    const gray =
 
-    source,
+      (
+        data[i] *
+        0.299
+      )
 
+      +
+
+      (
+        data[i + 1] *
+        0.587
+      )
+
+      +
+
+      (
+        data[i + 2] *
+        0.114
+      );
+
+
+    const value =
+      gray >
+      145
+        ? 255
+        : 0;
+
+
+    data[i] =
+      value;
+
+
+    data[i + 1] =
+      value;
+
+
+    data[i + 2] =
+      value;
+
+  }
+
+
+  context.putImageData(
+    image,
     0,
-
-    0,
-
-    canvas.width,
-
-    canvas.height
-
+    0
   );
 
 
-
-  ctx.filter =
-    'none';
-
-
-
   return canvas;
+
+}
+
+
+
+/**
+ * ==========================================================
+ * MAC INPUT
+ * ==========================================================
+ */
+
+function handleMacInput() {
+
+  const input =
+    document.getElementById(
+      'macInput'
+    );
+
+
+  let clean =
+    input.value
+      .toUpperCase()
+      .replace(
+        /[^0-9A-F]/g,
+        ''
+      );
+
+
+  clean =
+    clean.substring(
+      0,
+      12
+    );
+
+
+  const pieces =
+    [];
+
+
+  for (
+    let i = 0;
+    i < clean.length;
+    i += 2
+  ) {
+
+    pieces.push(
+      clean.substring(
+        i,
+        i + 2
+      )
+    );
+
+  }
+
+
+  input.value =
+    pieces.join(
+      ':'
+    );
+
+
+  validateMac();
+
+}
+
+
+
+/**
+ * ==========================================================
+ * VALIDATE MAC
+ * ==========================================================
+ */
+
+function validateMac() {
+
+  const input =
+    document.getElementById(
+      'macInput'
+    );
+
+
+  const save =
+    document.getElementById(
+      'saveBtn'
+    );
+
+
+  const validation =
+    document.getElementById(
+      'macValidation'
+    );
+
+
+  const mac =
+    normalizeMac(
+      input.value
+    );
+
+
+  if (
+    mac
+  ) {
+
+    input.value =
+      mac;
+
+
+    setMacState(
+      'valid',
+      'VALID MAC'
+    );
+
+
+    validation.textContent =
+      'Valid MAC Address.';
+
+
+    validation.style.color =
+      '#16864b';
+
+
+    save.disabled =
+      false;
+
+
+    return true;
+
+  }
+
+
+  if (
+    input.value
+  ) {
+
+    setMacState(
+      'invalid',
+      'INVALID MAC'
+    );
+
+
+    validation.textContent =
+      'Incomplete or invalid MAC Address.';
+
+
+    validation.style.color =
+      '#d63b3b';
+
+  } else {
+
+    setMacState(
+      'waiting',
+      'Waiting for scan'
+    );
+
+
+    validation.textContent =
+      '';
+
+  }
+
+
+  save.disabled =
+    true;
+
+
+  return false;
 
 }
 
@@ -3875,201 +1981,41 @@ function normalizeMac(
   value
 ) {
 
-
   if (
     !value
   ) {
 
-
     return null;
-
 
   }
 
 
-
   const clean =
-
     String(value)
-
       .toUpperCase()
-
       .replace(
-
         /[^0-9A-F]/g,
-
         ''
-
       );
 
 
-
   if (
-
     !/^[0-9A-F]{12}$/
       .test(
         clean
       )
-
   ) {
-
 
     return null;
 
-
   }
-
 
 
   return clean
-
     .match(
       /.{2}/g
     )
-
-    .join(
-      ':'
-    );
-
-}
-
-
-
-/**
- * ==========================================================
- * RESET CAPTURE STATE
- * ==========================================================
- */
-
-function resetCaptureState() {
-
-
-  capturedImageReady =
-    false;
-
-
-  currentDetectedMac =
-    null;
-
-
-  macConfirmed =
-    false;
-
-
-  manualEdit =
-    false;
-
-
-
-  document
-
-    .getElementById(
-      'capturedSection'
-    )
-
-    .classList
-
-    .add(
-      'hidden'
-    );
-
-
-
-  document
-
-    .getElementById(
-      'confirmPanel'
-    )
-
-    .classList
-
-    .add(
-      'hidden'
-    );
-
-
-  resetMacState();
-
-}
-
-
-
-/**
- * ==========================================================
- * RESET MAC STATE
- * ==========================================================
- */
-
-function resetMacState() {
-
-
-  const input =
-
-    document.getElementById(
-      'macInput'
-    );
-
-
-  if (
-    input
-  ) {
-
-
-    input.value =
-      '';
-
-
-  }
-
-
-
-  const save =
-
-    document.getElementById(
-      'saveBtn'
-    );
-
-
-  if (
-    save
-  ) {
-
-
-    save.disabled =
-      true;
-
-
-  }
-
-
-
-  const validation =
-
-    document.getElementById(
-      'macValidation'
-    );
-
-
-  if (
-    validation
-  ) {
-
-
-    validation.textContent =
-      '';
-
-
-  }
-
-
-
-  setMacState(
-
-    'waiting',
-
-    'Waiting for capture'
-
-  );
+    .join(':');
 
 }
 
@@ -4083,69 +2029,19 @@ function resetMacState() {
 
 function saveAndNext() {
 
-
-  const mac =
-
-    normalizeMac(
-
-      document
-
-        .getElementById(
-          'macInput'
-        )
-
-        .value
-
-    );
-
-
-
   if (
-    !mac
+    !validateMac()
   ) {
-
-
-    showMessage(
-
-      'Invalid MAC Address.',
-
-      'error'
-
-    );
-
 
     return;
 
   }
-
-
-
-  if (
-    !macConfirmed
-  ) {
-
-
-    showMessage(
-
-      'Please visually confirm the MAC before saving.',
-
-      'warning'
-
-    );
-
-
-    return;
-
-  }
-
 
 
   const button =
-
     document.getElementById(
       'saveBtn'
     );
-
 
 
   button.disabled =
@@ -4156,95 +2052,83 @@ function saveAndNext() {
     'SAVING...';
 
 
-
-  const params = {
-
-    api:
-      'v11',
-
-    action:
-      'saveMac',
-
-    mac:
-      mac,
-
-    device:
-
-      document
-
-        .getElementById(
-          'deviceType'
-        )
-
-        .value,
-
-    location:
-
-      document
-
-        .getElementById(
-          'location'
-        )
-
-        .value,
-
-    note:
-
-      document
-
-        .getElementById(
-          'note'
-        )
-
-        .value
-
-  };
-
-
-
   apiRequest(
 
-    params,
+    {
+
+      api:
+        'v11',
+
+      action:
+        'saveMac',
+
+      mac:
+        document
+          .getElementById(
+            'macInput'
+          )
+          .value,
+
+      device:
+        document
+          .getElementById(
+            'deviceType'
+          )
+          .value,
+
+      location:
+        document
+          .getElementById(
+            'location'
+          )
+          .value,
+
+      note:
+        document
+          .getElementById(
+            'note'
+          )
+          .value
+
+    },
 
     function (
       result
     ) {
 
-
       button.textContent =
         'SAVE & SCAN NEXT';
-
 
 
       if (
         result.success
       ) {
 
-
         document
-
           .getElementById(
             'deviceCount'
           )
-
           .textContent =
           result.count;
 
 
-
         document
-
           .getElementById(
-            'note'
+            'macInput'
           )
-
           .value =
           '';
 
 
+        document
+          .getElementById(
+            'note'
+          )
+          .value =
+          '';
 
-        resetCaptureState();
 
+        validateMac();
 
 
         showMessage(
@@ -4257,9 +2141,7 @@ function saveAndNext() {
         );
 
 
-
         loadDashboard();
-
 
 
         window.scrollTo({
@@ -4278,60 +2160,14 @@ function saveAndNext() {
         'duplicate'
       ) {
 
-
         button.disabled =
           false;
 
 
-
-        let message =
-
-          'Duplicate MAC: ' +
-          result.mac;
-
-
-
-        if (
-          result.existing
-        ) {
-
-
-          if (
-            result.existing.device
-          ) {
-
-
-            message +=
-
-              ' • ' +
-              result.existing.device;
-
-
-          }
-
-
-
-          if (
-            result.existing.location
-          ) {
-
-
-            message +=
-
-              ' • ' +
-              result.existing.location;
-
-
-          }
-
-
-        }
-
-
-
         showMessage(
 
-          message,
+          'Duplicate MAC: ' +
+          result.mac,
 
           'warning'
 
@@ -4340,10 +2176,8 @@ function saveAndNext() {
 
       } else {
 
-
         button.disabled =
           false;
-
 
 
         showMessage(
@@ -4355,14 +2189,11 @@ function saveAndNext() {
 
         );
 
-
       }
-
 
     },
 
     function () {
-
 
       button.textContent =
         'SAVE & SCAN NEXT';
@@ -4370,7 +2201,6 @@ function saveAndNext() {
 
       button.disabled =
         false;
-
 
     }
 
@@ -4388,7 +2218,6 @@ function saveAndNext() {
 
 function loadDashboard() {
 
-
   apiRequest(
 
     {
@@ -4405,39 +2234,28 @@ function loadDashboard() {
       data
     ) {
 
-
       if (
         !data.success
       ) {
 
-
         return;
-
 
       }
 
 
-
       document
-
         .getElementById(
           'deviceCount'
         )
-
         .textContent =
-
         data.count ||
         0;
 
 
-
       renderRecent(
-
         data.recent ||
         []
-
       );
-
 
     }
 
@@ -4449,7 +2267,7 @@ function loadDashboard() {
 
 /**
  * ==========================================================
- * API
+ * JSONP API
  * ==========================================================
  */
 
@@ -4463,15 +2281,11 @@ function apiRequest(
 
 ) {
 
-
   if (
-
     API_URL.includes(
       'PASTE_YOUR'
     )
-
   ) {
-
 
     showMessage(
 
@@ -4486,9 +2300,7 @@ function apiRequest(
       onError
     ) {
 
-
       onError();
-
 
     }
 
@@ -4496,7 +2308,6 @@ function apiRequest(
     return;
 
   }
-
 
 
   const callbackName =
@@ -4508,44 +2319,33 @@ function apiRequest(
     '_' +
 
     Math.floor(
-
       Math.random() *
       100000
-
     );
-
 
 
   const script =
-
     document.createElement(
       'script'
     );
-
 
 
   let finished =
     false;
 
 
-
   const timeout =
-
     setTimeout(
 
       function () {
-
 
         if (
           finished
         ) {
 
-
           return;
 
-
         }
-
 
 
         finished =
@@ -4553,7 +2353,6 @@ function apiRequest(
 
 
         cleanup();
-
 
 
         showMessage(
@@ -4565,17 +2364,13 @@ function apiRequest(
         );
 
 
-
         if (
           onError
         ) {
 
-
           onError();
 
-
         }
-
 
       },
 
@@ -4584,14 +2379,11 @@ function apiRequest(
     );
 
 
-
   function cleanup() {
-
 
     clearTimeout(
       timeout
     );
-
 
 
     delete window[
@@ -4599,11 +2391,9 @@ function apiRequest(
     ];
 
 
-
     if (
       script.parentNode
     ) {
-
 
       script
         .parentNode
@@ -4611,33 +2401,25 @@ function apiRequest(
           script
         );
 
-
     }
 
-
   }
-
 
 
   window[
     callbackName
   ] =
-
     function (
       data
     ) {
-
 
       if (
         finished
       ) {
 
-
         return;
 
-
       }
-
 
 
       finished =
@@ -4647,35 +2429,27 @@ function apiRequest(
       cleanup();
 
 
-
       if (
         onSuccess
       ) {
-
 
         onSuccess(
           data
         );
 
-
       }
 
-
     };
-
 
 
   parameters.callback =
     callbackName;
 
 
-
   const query =
-
     new URLSearchParams(
       parameters
     );
-
 
 
   script.src =
@@ -4687,22 +2461,16 @@ function apiRequest(
     query.toString();
 
 
-
   script.onerror =
-
     function () {
-
 
       if (
         finished
       ) {
 
-
         return;
 
-
       }
-
 
 
       finished =
@@ -4710,7 +2478,6 @@ function apiRequest(
 
 
       cleanup();
-
 
 
       showMessage(
@@ -4722,20 +2489,15 @@ function apiRequest(
       );
 
 
-
       if (
         onError
       ) {
 
-
         onError();
-
 
       }
 
-
     };
-
 
 
   document.body
@@ -4749,7 +2511,7 @@ function apiRequest(
 
 /**
  * ==========================================================
- * RECENT LIST
+ * RECENT
  * ==========================================================
  */
 
@@ -4757,24 +2519,17 @@ function renderRecent(
   items
 ) {
 
-
   const container =
-
     document.getElementById(
       'recentList'
     );
 
 
-
   if (
-
     !items ||
-
     items.length ===
     0
-
   ) {
-
 
     container.innerHTML =
 
@@ -4783,23 +2538,19 @@ function renderRecent(
       '</div>';
 
 
-
     return;
 
   }
 
 
-
   container.innerHTML =
 
     items
-
       .map(
 
         function (
           item
         ) {
-
 
           return `
 
@@ -4851,14 +2602,10 @@ function renderRecent(
 
           `;
 
-
         }
 
       )
-
-      .join(
-        ''
-      );
+      .join('');
 
 }
 
@@ -4880,29 +2627,23 @@ function setOCRStatus(
 
 ) {
 
-
   const box =
-
     document.getElementById(
       'ocrStatus'
     );
-
 
 
   if (
     !show
   ) {
 
-
     box.classList.add(
       'hidden'
     );
 
-
     return;
 
   }
-
 
 
   box.classList.remove(
@@ -4910,28 +2651,20 @@ function setOCRStatus(
   );
 
 
-
   document
-
     .getElementById(
       'ocrTitle'
     )
-
     .textContent =
-
     title ||
     'Reading...';
 
 
-
   document
-
     .getElementById(
       'ocrProgress'
     )
-
     .textContent =
-
     progress ||
     '';
 
@@ -4941,7 +2674,7 @@ function setOCRStatus(
 
 /**
  * ==========================================================
- * UI STATE
+ * MAC STATE
  * ==========================================================
  */
 
@@ -4953,32 +2686,15 @@ function setMacState(
 
 ) {
 
-
   const state =
-
     document.getElementById(
       'macState'
     );
 
 
-
-  if (
-    !state
-  ) {
-
-
-    return;
-
-
-  }
-
-
-
   state.className =
-
     'macState ' +
     type;
-
 
 
   state.textContent =
@@ -5002,13 +2718,10 @@ function setSystemStatus(
 
 ) {
 
-
   const status =
-
     document.getElementById(
       'systemStatus'
     );
-
 
 
   status.innerHTML =
@@ -5020,21 +2733,16 @@ function setSystemStatus(
     );
 
 
-
   const dot =
-
     status.querySelector(
       '.statusDot'
     );
 
 
-
   dot.style.background =
 
     ready
-
       ? '#4cea92'
-
       : '#ff7474';
 
 }
@@ -5043,7 +2751,7 @@ function setSystemStatus(
 
 /**
  * ==========================================================
- * MESSAGES
+ * MESSAGE
  * ==========================================================
  */
 
@@ -5055,25 +2763,20 @@ function showMessage(
 
 ) {
 
-
   const box =
-
     document.getElementById(
       'messageBox'
     );
-
 
 
   box.className =
     'messageBox';
 
 
-
   if (
     type ===
     'success'
   ) {
-
 
     box.classList.add(
       'messageSuccess'
@@ -5085,7 +2788,6 @@ function showMessage(
     'warning'
   ) {
 
-
     box.classList.add(
       'messageWarning'
     );
@@ -5093,19 +2795,15 @@ function showMessage(
 
   } else {
 
-
     box.classList.add(
       'messageError'
     );
 
-
   }
-
 
 
   box.textContent =
     message;
-
 
 
   box.classList.remove(
@@ -5113,16 +2811,13 @@ function showMessage(
   );
 
 
-
   setTimeout(
 
     function () {
 
-
       box.classList.add(
         'hidden'
       );
-
 
     },
 
@@ -5136,47 +2831,21 @@ function showMessage(
 
 /**
  * ==========================================================
- * HAPTICS
+ * HAPTIC
  * ==========================================================
  */
 
-function vibrateShort() {
-
-
-  if (
-    navigator.vibrate
-  ) {
-
-
-    navigator.vibrate(
-      50
-    );
-
-
-  }
-
-}
-
-
-
 function vibrateSuccess() {
 
-
   if (
     navigator.vibrate
   ) {
 
-
-    navigator.vibrate(
-
-      [
-        70,
-        40,
-        70
-      ]
-
-    );
-
+    navigator.vibrate([
+      70,
+      40,
+      70
+    ]);
 
   }
 
@@ -5194,20 +2863,14 @@ function escapeHtml(
   value
 ) {
 
-
   if (
-
     value === null ||
-
     value === undefined
-
   ) {
-
 
     return '';
 
   }
-
 
 
   return String(value)
