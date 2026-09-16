@@ -38,7 +38,7 @@ const GOOGLE_API_URL =
  */
 
 const OCR_API_URL_RAW =
-  'https://math-max-mlb-poems.trycloudflare.com';
+  'https://pc-home.tail51a762.ts.net';
 
 
 const OCR_API_URL =
