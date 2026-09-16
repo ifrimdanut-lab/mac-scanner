@@ -2,15 +2,17 @@
  * ==========================================================
  * ICHC MAC Scanner
  *
- * Version: V1.1.1
- * Fast MAC Recognition
+ * Version: V1.1.2-ScreenMode
+ *
+ * Specialized OCR preprocessing for text photographed
+ * directly from computer / phone displays.
  * ==========================================================
  */
 
 
 /**
  * ==========================================================
- * CONFIG
+ * CONFIGURATION
  * ==========================================================
  */
 
@@ -19,7 +21,22 @@ const API_URL =
 
 
 const APP_VERSION =
-  'V1.1.1';
+  'V1.1.2-ScreenMode';
+
+
+const OCR_TIMEOUT_MS =
+  12000;
+
+
+/**
+ * Current scan mode:
+ *
+ * screen = monitor / laptop / phone display
+ * normal = printed label / physical sticker
+ */
+
+let scanMode =
+  'screen';
 
 
 let cameraStream =
@@ -59,6 +76,10 @@ document.addEventListener(
 
   async function () {
 
+    setScanMode(
+      'screen'
+    );
+
     loadDashboard();
 
     handleMacInput();
@@ -68,6 +89,119 @@ document.addEventListener(
   }
 
 );
+
+
+
+/**
+ * ==========================================================
+ * SCAN MODE
+ * ==========================================================
+ */
+
+function setScanMode(
+  mode
+) {
+
+  scanMode =
+    mode === 'normal'
+      ? 'normal'
+      : 'screen';
+
+
+  const normalBtn =
+    document.getElementById(
+      'normalModeBtn'
+    );
+
+
+  const screenBtn =
+    document.getElementById(
+      'screenModeBtn'
+    );
+
+
+  const frame =
+    document.getElementById(
+      'scanFrame'
+    );
+
+
+  const hint =
+    document.getElementById(
+      'modeHint'
+    );
+
+
+  const scanHint =
+    document.getElementById(
+      'scanHint'
+    );
+
+
+  normalBtn.classList.remove(
+    'active'
+  );
+
+
+  screenBtn.classList.remove(
+    'active'
+  );
+
+
+  frame.classList.remove(
+    'normalFrame'
+  );
+
+
+  frame.classList.remove(
+    'screenFrame'
+  );
+
+
+  if (
+    scanMode ===
+    'screen'
+  ) {
+
+    screenBtn.classList.add(
+      'active'
+    );
+
+
+    frame.classList.add(
+      'screenFrame'
+    );
+
+
+    hint.textContent =
+      'Optimized for MAC addresses displayed on monitors, laptops and phones.';
+
+
+    scanHint.textContent =
+      'PUT ONLY THE MAC LINE INSIDE THE FRAME';
+
+  } else {
+
+    normalBtn.classList.add(
+      'active'
+    );
+
+
+    frame.classList.add(
+      'normalFrame'
+    );
+
+
+    hint.textContent =
+      'Use this mode for printed labels, stickers and device packaging.';
+
+
+    scanHint.textContent =
+      'KEEP THE MAC ADDRESS INSIDE FRAME';
+
+  }
+
+}
 
 
 
@@ -105,7 +239,9 @@ async function discoverCameras() {
     videoDevices =
       devices.filter(
 
-        function (device) {
+        function (
+          device
+        ) {
 
           return (
             device.kind ===
@@ -119,8 +255,9 @@ async function discoverCameras() {
 
     populateCameraList();
 
-
-  } catch (error) {
+  } catch (
+    error
+  ) {
 
     console.error(
       error
@@ -134,7 +271,7 @@ async function discoverCameras() {
 
 /**
  * ==========================================================
- * CAMERA SELECT
+ * CAMERA LIST
  * ==========================================================
  */
 
@@ -276,7 +413,6 @@ async function startCamera(
 
       };
 
-
     } else {
 
       constraints = {
@@ -382,8 +518,9 @@ async function startCamera(
       true
     );
 
-
-  } catch (error) {
+  } catch (
+    error
+  ) {
 
     console.error(
       error
@@ -539,7 +676,7 @@ async function changeCamera() {
 
 /**
  * ==========================================================
- * SYNC CAMERA SELECTOR
+ * SYNC CAMERA
  * ==========================================================
  */
 
@@ -636,7 +773,7 @@ async function switchCamera() {
 
 /**
  * ==========================================================
- * SCAN MAC
+ * SCAN
  * ==========================================================
  */
 
@@ -695,7 +832,9 @@ async function scanMac() {
 
       'Capturing image...',
 
-      'Keep the MAC Address inside the frame'
+      scanMode === 'screen'
+        ? 'Optimizing screen text'
+        : 'Reading device label'
 
     );
 
@@ -706,12 +845,13 @@ async function scanMac() {
       );
 
 
-    await runFastOCR(
+    await runScreenAwareOCR(
       canvas
     );
 
-
-  } catch (error) {
+  } catch (
+    error
+  ) {
 
     console.error(
       error
@@ -726,7 +866,6 @@ async function scanMac() {
       'error'
 
     );
-
 
   } finally {
 
@@ -750,7 +889,7 @@ async function scanMac() {
 
 /**
  * ==========================================================
- * CAMERA CAPTURE
+ * CAPTURE
  * ==========================================================
  */
 
@@ -782,18 +921,53 @@ function captureCameraFrame(
     video.videoHeight;
 
 
-  const cropWidth =
-    Math.floor(
-      width *
-      0.90
-    );
+  let cropWidth;
+  let cropHeight;
+  let scale;
 
 
-  const cropHeight =
-    Math.floor(
-      height *
-      0.52
-    );
+  if (
+    scanMode ===
+    'screen'
+  ) {
+
+    cropWidth =
+      Math.floor(
+        width *
+        0.92
+      );
+
+
+    cropHeight =
+      Math.floor(
+        height *
+        0.24
+      );
+
+
+    scale =
+      3;
+
+  } else {
+
+    cropWidth =
+      Math.floor(
+        width *
+        0.90
+      );
+
+
+    cropHeight =
+      Math.floor(
+        height *
+        0.52
+      );
+
+
+    scale =
+      2;
+
+  }
 
 
   const startX =
@@ -815,13 +989,17 @@ function captureCameraFrame(
 
 
   canvas.width =
-    cropWidth *
-    2;
+    Math.round(
+      cropWidth *
+      scale
+    );
 
 
   canvas.height =
-    cropHeight *
-    2;
+    Math.round(
+      cropHeight *
+      scale
+    );
 
 
   context.imageSmoothingEnabled =
@@ -859,11 +1037,11 @@ function captureCameraFrame(
 
 /**
  * ==========================================================
- * FAST OCR
+ * OCR ENGINE
  * ==========================================================
  */
 
-async function runFastOCR(
+async function runScreenAwareOCR(
   sourceCanvas
 ) {
 
@@ -871,39 +1049,105 @@ async function runFastOCR(
     await getOCRWorker();
 
 
-  const variants = [
+  let variants;
 
-    {
-      name:
-        'Original',
 
-      canvas:
-        cloneCanvas(
-          sourceCanvas
-        )
-    },
+  if (
+    scanMode ===
+    'screen'
+  ) {
 
-    {
-      name:
-        'High Contrast',
+    variants = [
 
-      canvas:
-        createHighContrastCanvas(
-          sourceCanvas
-        )
-    },
+      {
+        name:
+          'Screen Grayscale',
 
-    {
-      name:
-        'Threshold',
+        canvas:
+          createScreenGrayscale(
+            sourceCanvas
+          )
+      },
 
-      canvas:
-        createThresholdCanvas(
-          sourceCanvas
-        )
-    }
+      {
+        name:
+          'Screen Soft',
 
-  ];
+        canvas:
+          createScreenSoftCanvas(
+            sourceCanvas
+          )
+      },
+
+      {
+        name:
+          'Screen Contrast',
+
+        canvas:
+          createScreenContrastCanvas(
+            sourceCanvas
+          )
+      },
+
+      {
+        name:
+          'Screen Sharp',
+
+        canvas:
+          createScreenSharpCanvas(
+            sourceCanvas
+          )
+      },
+
+      {
+        name:
+          'Screen Threshold',
+
+        canvas:
+          createScreenThresholdCanvas(
+            sourceCanvas
+          )
+      }
+
+    ];
+
+  } else {
+
+    variants = [
+
+      {
+        name:
+          'Original',
+
+        canvas:
+          cloneCanvas(
+            sourceCanvas
+          )
+      },
+
+      {
+        name:
+          'Contrast',
+
+        canvas:
+          createScreenContrastCanvas(
+            sourceCanvas
+          )
+      },
+
+      {
+        name:
+          'Threshold',
+
+        canvas:
+          createScreenThresholdCanvas(
+            sourceCanvas
+          )
+      }
+
+    ];
+
+  }
 
 
   let bestCandidate =
@@ -931,49 +1175,57 @@ async function runFastOCR(
     );
 
 
-    const result =
-      await worker.recognize(
-        variants[i].canvas
-      );
+    try {
+
+      const result =
+        await recognizeWithTimeout(
+
+          worker,
+
+          variants[i].canvas
+
+        );
 
 
-    const text =
-      result &&
-      result.data
-        ? result.data.text || ''
-        : '';
+      const text =
+        result &&
+        result.data
+          ? result.data.text || ''
+          : '';
 
 
-    console.log(
-      'OCR ' +
-      variants[i].name +
-      ':',
-      text
-    );
-
-
-    const candidate =
-      findBestMacCandidate(
+      console.log(
+        variants[i].name,
         text
       );
 
 
-    if (
-      candidate
+      const candidate =
+        findBestMacCandidate(
+          text
+        );
+
+
+      if (
+        candidate
+      ) {
+
+        bestCandidate =
+          candidate;
+
+
+        break;
+
+      }
+
+    } catch (
+      error
     ) {
 
-      bestCandidate =
-        candidate;
-
-
-      /*
-       * V1.1.1 deliberately exits early.
-       *
-       * If a valid MAC pattern is found,
-       * show it immediately.
-       */
-
-      break;
+      console.warn(
+        'OCR pass failed:',
+        error
+      );
 
     }
 
@@ -1005,7 +1257,7 @@ async function runFastOCR(
       'macValidation'
     )
     .textContent =
-    'Could not detect a MAC Address. Move closer and try again.';
+    'No MAC pattern detected. Move closer and keep only the MAC line inside the frame.';
 
 
   document
@@ -1018,11 +1270,61 @@ async function runFastOCR(
 
   showMessage(
 
-    'MAC Address not detected. Try moving closer to the text.',
+    'MAC not detected. Try lowering monitor brightness and moving closer.',
 
     'warning'
 
   );
+
+}
+
+
+
+/**
+ * ==========================================================
+ * OCR TIMEOUT
+ * ==========================================================
+ */
+
+function recognizeWithTimeout(
+  worker,
+  image
+) {
+
+  return Promise.race([
+
+    worker.recognize(
+      image
+    ),
+
+    new Promise(
+
+      function (
+        resolve,
+        reject
+      ) {
+
+        setTimeout(
+
+          function () {
+
+            reject(
+              new Error(
+                'OCR timeout'
+              )
+            );
+
+          },
+
+          OCR_TIMEOUT_MS
+
+        );
+
+      }
+
+    )
+
+  ]);
 
 }
 
@@ -1069,7 +1371,7 @@ async function getOCRWorker() {
       '1',
 
     tessedit_pageseg_mode:
-      '6'
+      '7'
 
   });
 
@@ -1082,7 +1384,7 @@ async function getOCRWorker() {
 
 /**
  * ==========================================================
- * FIND MAC CANDIDATE
+ * MAC DETECTION
  * ==========================================================
  */
 
@@ -1099,24 +1401,31 @@ function findBestMacCandidate(
   }
 
 
-  const source =
+  let source =
     String(text)
       .toUpperCase();
 
 
+  source =
+    normalizeCommonScreenOCR(
+      source
+    );
+
+
   console.log(
-    'OCR source:',
+    'Normalized OCR:',
     source
   );
 
 
+  let match;
+
+
   /**
-   * Standard MAC:
-   *
-   * AA:BB:CC:DD:EE:FF
+   * 1. Colon-separated
    */
 
-  let match =
+  match =
     source.match(
       /(?:[0-9A-F]{2}:){5}[0-9A-F]{2}/
     );
@@ -1134,9 +1443,7 @@ function findBestMacCandidate(
 
 
   /**
-   * Dash:
-   *
-   * AA-BB-CC-DD-EE-FF
+   * 2. Dash-separated
    */
 
   match =
@@ -1157,9 +1464,7 @@ function findBestMacCandidate(
 
 
   /**
-   * Spaces:
-   *
-   * AA BB CC DD EE FF
+   * 3. Space-separated
    */
 
   match =
@@ -1180,9 +1485,7 @@ function findBestMacCandidate(
 
 
   /**
-   * Cisco:
-   *
-   * AABB.CCDD.EEFF
+   * 4. Dot format
    */
 
   match =
@@ -1203,78 +1506,67 @@ function findBestMacCandidate(
 
 
   /**
-   * Compact:
-   *
-   * AABBCCDDEEFF
+   * 5. MAC-labeled compact sequence
    */
 
-  match =
-    source.match(
-      /\b[0-9A-F]{12}\b/
-    );
-
-
   if (
-    match
+    containsMacKeyword(
+      source
+    )
   ) {
 
-    return normalizeMac(
-      match[0]
-    );
+    match =
+      source.match(
+        /\b[0-9A-F]{12}\b/
+      );
+
+
+    if (
+      match
+    ) {
+
+      return normalizeMac(
+        match[0]
+      );
+
+    }
 
   }
 
 
   /**
-   * OCR-cleaned search.
+   * 6. Tolerant screen-specific pattern.
    *
-   * Remove obvious whitespace and punctuation
-   * between hexadecimal characters.
+   * Allows:
+   * O -> 0
+   * I/L -> 1
+   * S -> 5
+   * G -> 6
+   *
+   * But ONLY where a MAC-shaped separated string exists.
    */
 
-  const cleaned =
-    source.replace(
-      /[^0-9A-F]/g,
-      ''
+  const tolerant =
+    source.match(
+      /(?:[0-9A-Z]{2}[:\-]){5}[0-9A-Z]{2}/
     );
 
 
-  /**
-   * V1.1.1 allowed sliding search.
-   *
-   * This made it more permissive than later versions.
-   */
-
   if (
-    cleaned.length >=
-    12
+    tolerant
   ) {
 
-    for (
-      let i = 0;
-      i <= cleaned.length - 12;
-      i++
+    const corrected =
+      correctSeparatedMacOCR(
+        tolerant[0]
+      );
+
+
+    if (
+      corrected
     ) {
 
-      const part =
-        cleaned.substring(
-          i,
-          i + 12
-        );
-
-
-      if (
-        /^[0-9A-F]{12}$/
-          .test(
-            part
-          )
-      ) {
-
-        return normalizeMac(
-          part
-        );
-
-      }
+      return corrected;
 
     }
 
@@ -1282,6 +1574,689 @@ function findBestMacCandidate(
 
 
   return null;
+
+}
+
+
+
+/**
+ * ==========================================================
+ * SCREEN OCR NORMALIZATION
+ * ==========================================================
+ */
+
+function normalizeCommonScreenOCR(
+  text
+) {
+
+  return String(text)
+
+    .replace(
+      /：/g,
+      ':'
+    )
+
+    .replace(
+      /–/g,
+      '-'
+    )
+
+    .replace(
+      /—/g,
+      '-'
+    )
+
+    .replace(
+      /\|/g,
+      'I'
+    );
+
+}
+
+
+
+/**
+ * ==========================================================
+ * TOLERANT CORRECTION
+ * ==========================================================
+ */
+
+function correctSeparatedMacOCR(
+  raw
+) {
+
+  const groups =
+    String(raw)
+      .toUpperCase()
+      .split(
+        /[:-]/
+      );
+
+
+  if (
+    groups.length !==
+    6
+  ) {
+
+    return null;
+
+  }
+
+
+  const conversion = {
+
+    O:
+      '0',
+
+    Q:
+      '0',
+
+    I:
+      '1',
+
+    L:
+      '1',
+
+    S:
+      '5',
+
+    G:
+      '6'
+
+  };
+
+
+  const result =
+    [];
+
+
+  for (
+    const group
+    of groups
+  ) {
+
+    if (
+      group.length !==
+      2
+    ) {
+
+      return null;
+
+    }
+
+
+    let corrected =
+      '';
+
+
+    for (
+      const char
+      of group
+    ) {
+
+      if (
+        /[0-9A-F]/
+          .test(
+            char
+          )
+      ) {
+
+        corrected +=
+          char;
+
+      } else if (
+        conversion[
+          char
+        ]
+      ) {
+
+        corrected +=
+          conversion[
+            char
+          ];
+
+      } else {
+
+        return null;
+
+      }
+
+    }
+
+
+    result.push(
+      corrected
+    );
+
+  }
+
+
+  return normalizeMac(
+    result.join(
+      ':'
+    )
+  );
+
+}
+
+
+
+/**
+ * ==========================================================
+ * KEYWORD
+ * ==========================================================
+ */
+
+function containsMacKeyword(
+  text
+) {
+
+  const keywords = [
+
+    'MAC',
+
+    'MAC ADDRESS',
+
+    'PHYSICAL ADDRESS',
+
+    'WI-FI',
+
+    'WIFI',
+
+    'WLAN',
+
+    'ETHERNET'
+
+  ];
+
+
+  return keywords.some(
+
+    function (
+      keyword
+    ) {
+
+      return text.includes(
+        keyword
+      );
+
+    }
+
+  );
+
+}
+
+
+
+/**
+ * ==========================================================
+ * IMAGE CLONE
+ * ==========================================================
+ */
+
+function cloneCanvas(
+  source
+) {
+
+  const canvas =
+    document.createElement(
+      'canvas'
+    );
+
+
+  canvas.width =
+    source.width;
+
+
+  canvas.height =
+    source.height;
+
+
+  const context =
+    canvas.getContext(
+      '2d',
+      {
+        willReadFrequently:
+          true
+      }
+    );
+
+
+  context.drawImage(
+    source,
+    0,
+    0
+  );
+
+
+  return canvas;
+
+}
+
+
+
+/**
+ * ==========================================================
+ * SCREEN GRAYSCALE
+ * ==========================================================
+ */
+
+function createScreenGrayscale(
+  source
+) {
+
+  const canvas =
+    cloneCanvas(
+      source
+    );
+
+
+  const context =
+    canvas.getContext(
+      '2d',
+      {
+        willReadFrequently:
+          true
+      }
+    );
+
+
+  const image =
+    context.getImageData(
+
+      0,
+      0,
+
+      canvas.width,
+      canvas.height
+
+    );
+
+
+  const data =
+    image.data;
+
+
+  for (
+    let i = 0;
+    i < data.length;
+    i += 4
+  ) {
+
+    const gray =
+
+      data[i] *
+      0.299
+
+      +
+
+      data[i + 1] *
+      0.587
+
+      +
+
+      data[i + 2] *
+      0.114;
+
+
+    data[i] =
+      gray;
+
+
+    data[i + 1] =
+      gray;
+
+
+    data[i + 2] =
+      gray;
+
+  }
+
+
+  context.putImageData(
+    image,
+    0,
+    0
+  );
+
+
+  return canvas;
+
+}
+
+
+
+/**
+ * ==========================================================
+ * SCREEN SOFT
+ *
+ * Small blur helps reduce pixel-grid / moiré artifacts.
+ * ==========================================================
+ */
+
+function createScreenSoftCanvas(
+  source
+) {
+
+  const canvas =
+    document.createElement(
+      'canvas'
+    );
+
+
+  canvas.width =
+    source.width;
+
+
+  canvas.height =
+    source.height;
+
+
+  const context =
+    canvas.getContext(
+      '2d',
+      {
+        willReadFrequently:
+          true
+      }
+    );
+
+
+  context.filter =
+    'grayscale(100%) blur(0.45px) contrast(135%)';
+
+
+  context.drawImage(
+    source,
+    0,
+    0
+  );
+
+
+  context.filter =
+    'none';
+
+
+  return canvas;
+
+}
+
+
+
+/**
+ * ==========================================================
+ * SCREEN CONTRAST
+ * ==========================================================
+ */
+
+function createScreenContrastCanvas(
+  source
+) {
+
+  const canvas =
+    createScreenGrayscale(
+      source
+    );
+
+
+  const context =
+    canvas.getContext(
+      '2d',
+      {
+        willReadFrequently:
+          true
+      }
+    );
+
+
+  const image =
+    context.getImageData(
+
+      0,
+      0,
+
+      canvas.width,
+      canvas.height
+
+    );
+
+
+  const data =
+    image.data;
+
+
+  const contrast =
+    1.65;
+
+
+  for (
+    let i = 0;
+    i < data.length;
+    i += 4
+  ) {
+
+    let value =
+
+      (
+        data[i] -
+        128
+      )
+
+      *
+      contrast
+
+      +
+      128;
+
+
+    value =
+      Math.max(
+        0,
+        Math.min(
+          255,
+          value
+        )
+      );
+
+
+    data[i] =
+      value;
+
+
+    data[i + 1] =
+      value;
+
+
+    data[i + 2] =
+      value;
+
+  }
+
+
+  context.putImageData(
+    image,
+    0,
+    0
+  );
+
+
+  return canvas;
+
+}
+
+
+
+/**
+ * ==========================================================
+ * SCREEN SHARP
+ * ==========================================================
+ */
+
+function createScreenSharpCanvas(
+  source
+) {
+
+  const canvas =
+    document.createElement(
+      'canvas'
+    );
+
+
+  canvas.width =
+    source.width;
+
+
+  canvas.height =
+    source.height;
+
+
+  const context =
+    canvas.getContext(
+      '2d',
+      {
+        willReadFrequently:
+          true
+      }
+    );
+
+
+  context.filter =
+    'grayscale(100%) contrast(165%) brightness(108%)';
+
+
+  context.drawImage(
+    source,
+    0,
+    0
+  );
+
+
+  context.filter =
+    'none';
+
+
+  return canvas;
+
+}
+
+
+
+/**
+ * ==========================================================
+ * SCREEN THRESHOLD
+ * ==========================================================
+ */
+
+function createScreenThresholdCanvas(
+  source
+) {
+
+  const canvas =
+    createScreenGrayscale(
+      source
+    );
+
+
+  const context =
+    canvas.getContext(
+      '2d',
+      {
+        willReadFrequently:
+          true
+      }
+    );
+
+
+  const image =
+    context.getImageData(
+
+      0,
+      0,
+
+      canvas.width,
+      canvas.height
+
+    );
+
+
+  const data =
+    image.data;
+
+
+  let total =
+    0;
+
+
+  let pixels =
+    0;
+
+
+  for (
+    let i = 0;
+    i < data.length;
+    i += 4
+  ) {
+
+    total +=
+      data[i];
+
+
+    pixels++;
+
+  }
+
+
+  const average =
+    total /
+    pixels;
+
+
+  const threshold =
+    Math.max(
+      95,
+      Math.min(
+        190,
+        average *
+        0.92
+      )
+    );
+
+
+  for (
+    let i = 0;
+    i < data.length;
+    i += 4
+  ) {
+
+    const value =
+      data[i] >
+      threshold
+        ? 255
+        : 0;
+
+
+    data[i] =
+      value;
+
+
+    data[i + 1] =
+      value;
+
+
+    data[i + 2] =
+      value;
+
+  }
+
+
+  context.putImageData(
+    image,
+    0,
+    0
+  );
+
+
+  return canvas;
 
 }
 
@@ -1331,7 +2306,7 @@ function setDetectedMac(
       'macValidation'
     )
     .textContent =
-    'Valid MAC Address detected by OCR.';
+    'MAC detected by OCR. Please verify before saving.';
 
 
   document
@@ -1435,7 +2410,7 @@ function scanUploadedPhoto(
 
 
             const maxWidth =
-              2000;
+              2400;
 
 
             if (
@@ -1492,12 +2467,13 @@ function scanUploadedPhoto(
             );
 
 
-            await runFastOCR(
+            await runScreenAwareOCR(
               canvas
             );
 
-
-          } catch (error) {
+          } catch (
+            error
+          ) {
 
             showMessage(
 
@@ -1507,7 +2483,6 @@ function scanUploadedPhoto(
               'error'
 
             );
-
 
           } finally {
 
@@ -1540,274 +2515,7 @@ function scanUploadedPhoto(
 
 /**
  * ==========================================================
- * IMAGE VARIANTS
- * ==========================================================
- */
-
-function cloneCanvas(
-  source
-) {
-
-  const canvas =
-    document.createElement(
-      'canvas'
-    );
-
-
-  canvas.width =
-    source.width;
-
-
-  canvas.height =
-    source.height;
-
-
-  const context =
-    canvas.getContext(
-      '2d',
-      {
-        willReadFrequently:
-          true
-      }
-    );
-
-
-  context.drawImage(
-    source,
-    0,
-    0
-  );
-
-
-  return canvas;
-
-}
-
-
-
-/**
- * ==========================================================
- * HIGH CONTRAST
- * ==========================================================
- */
-
-function createHighContrastCanvas(
-  source
-) {
-
-  const canvas =
-    cloneCanvas(
-      source
-    );
-
-
-  const context =
-    canvas.getContext(
-      '2d',
-      {
-        willReadFrequently:
-          true
-      }
-    );
-
-
-  const image =
-    context.getImageData(
-
-      0,
-      0,
-
-      canvas.width,
-      canvas.height
-
-    );
-
-
-  const data =
-    image.data;
-
-
-  for (
-    let i = 0;
-    i < data.length;
-    i += 4
-  ) {
-
-    const gray =
-
-      (
-        data[i] *
-        0.299
-      )
-
-      +
-
-      (
-        data[i + 1] *
-        0.587
-      )
-
-      +
-
-      (
-        data[i + 2] *
-        0.114
-      );
-
-
-    let value =
-      (
-        gray -
-        128
-      ) *
-      1.6 +
-      128;
-
-
-    value =
-      Math.max(
-        0,
-        Math.min(
-          255,
-          value
-        )
-      );
-
-
-    data[i] =
-      value;
-
-
-    data[i + 1] =
-      value;
-
-
-    data[i + 2] =
-      value;
-
-  }
-
-
-  context.putImageData(
-    image,
-    0,
-    0
-  );
-
-
-  return canvas;
-
-}
-
-
-
-/**
- * ==========================================================
- * THRESHOLD
- * ==========================================================
- */
-
-function createThresholdCanvas(
-  source
-) {
-
-  const canvas =
-    cloneCanvas(
-      source
-    );
-
-
-  const context =
-    canvas.getContext(
-      '2d',
-      {
-        willReadFrequently:
-          true
-      }
-    );
-
-
-  const image =
-    context.getImageData(
-
-      0,
-      0,
-
-      canvas.width,
-      canvas.height
-
-    );
-
-
-  const data =
-    image.data;
-
-
-  for (
-    let i = 0;
-    i < data.length;
-    i += 4
-  ) {
-
-    const gray =
-
-      (
-        data[i] *
-        0.299
-      )
-
-      +
-
-      (
-        data[i + 1] *
-        0.587
-      )
-
-      +
-
-      (
-        data[i + 2] *
-        0.114
-      );
-
-
-    const value =
-      gray >
-      145
-        ? 255
-        : 0;
-
-
-    data[i] =
-      value;
-
-
-    data[i + 1] =
-      value;
-
-
-    data[i + 2] =
-      value;
-
-  }
-
-
-  context.putImageData(
-    image,
-    0,
-    0
-  );
-
-
-  return canvas;
-
-}
-
-
-
-/**
- * ==========================================================
- * MAC INPUT
+ * INPUT
  * ==========================================================
  */
 
@@ -1869,7 +2577,7 @@ function handleMacInput() {
 
 /**
  * ==========================================================
- * VALIDATE MAC
+ * VALIDATE
  * ==========================================================
  */
 
@@ -1973,7 +2681,7 @@ function validateMac() {
 
 /**
  * ==========================================================
- * NORMALIZE MAC
+ * NORMALIZE
  * ==========================================================
  */
 
@@ -2154,7 +2862,6 @@ function saveAndNext() {
 
         });
 
-
       } else if (
         result.type ===
         'duplicate'
@@ -2172,7 +2879,6 @@ function saveAndNext() {
           'warning'
 
         );
-
 
       } else {
 
@@ -2267,7 +2973,7 @@ function loadDashboard() {
 
 /**
  * ==========================================================
- * JSONP API
+ * API
  * ==========================================================
  */
 
@@ -2782,7 +3488,6 @@ function showMessage(
       'messageSuccess'
     );
 
-
   } else if (
     type ===
     'warning'
@@ -2791,7 +3496,6 @@ function showMessage(
     box.classList.add(
       'messageWarning'
     );
-
 
   } else {
 
@@ -2831,7 +3535,7 @@ function showMessage(
 
 /**
  * ==========================================================
- * HAPTIC
+ * VIBRATION
  * ==========================================================
  */
 
