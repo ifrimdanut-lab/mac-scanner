@@ -1,24 +1,21 @@
 /**
  * ==========================================================
  * ICHC MAC Scanner
- * Version V1.3.2.1
+ * Version V1.3.2.2
  *
  * LAYOUT:
- *
  * 1. LIVE MAC SCAN
- * 2. CAMERA
+ * 2. CAMERA VIEW
  * 3. LARGE MAC RESULT
  * 4. OCR RESULT / DEVICE DATA
- * 5. CAMERA ACTIONS
- * 6. OTHER CONTENT
- * 7. LOCAL PADDLEOCR - LAST
+ * 5. REMAINING CAMERA CONTROLS / OTHER CONTENT
+ * 6. LOCAL PADDLEOCR - LAST
  *
- * OCR ENGINE:
- * V1.3.0 unchanged
+ * OCR engine / speed unchanged from V1.3.0.
  * ==========================================================
  */
 
-const APP_VERSION = 'V1.3.2.1';
+const APP_VERSION = 'V1.3.2.2';
 
 
 /* ==========================================================
@@ -137,25 +134,11 @@ document.addEventListener(
     );
 
 
-    /*
-     * Build the new interface blocks.
-     */
-
     createCompactMacResultUI();
 
     createLiveScanUI();
 
-
-    /*
-     * Reorder existing HTML sections.
-     */
-
     reorderApplicationLayout();
-
-
-    /*
-     * OCR connection information.
-     */
 
     renderConnectionInfo();
 
@@ -180,105 +163,66 @@ document.addEventListener(
 
 
 /* ==========================================================
-   V1.3.2.1
-   APPLICATION LAYOUT
+   V1.3.2.2 - EXACT LAYOUT REORDER
 ========================================================== */
 
 function reorderApplicationLayout() {
 
-  /*
-   * Live Scan must be before camera.
-   */
-
-  moveLiveScanBeforeCamera();
-
-
-  /*
-   * OCR Result must be immediately
-   * after large MAC result.
-   */
-
-  moveOCRResultBelowCompactMac();
-
-
-  /*
-   * Local PaddleOCR must be last.
-   */
+  arrangePrimaryScannerFlow();
 
   movePaddleOCRSectionToBottom();
 }
 
 
-/* ==========================================================
-   FIND CARD / SECTION BY HEADING
-========================================================== */
+/*
+ * Finds common parent containing both
+ * the camera display and camera controls.
+ */
 
-function findSectionByHeadingText(
-  searchText
-) {
+function findScannerWorkspace() {
 
-  const normalizedSearch =
-    String(
-      searchText || ''
-    )
-      .trim()
-      .toLowerCase();
+  const camera =
+    document.getElementById(
+      'camera'
+    );
+
+
+  const startButton =
+    document.getElementById(
+      'startCameraBtn'
+    );
 
 
   if (
-    !normalizedSearch
+    !camera ||
+    !startButton
   ) {
 
     return null;
   }
 
 
-  const headings =
-    document.querySelectorAll(
-      'h1, h2, h3, h4, h5, h6'
-    );
+  let node =
+    camera.parentElement;
 
 
-  for (
-    const heading of headings
+  while (
+    node &&
+    node !== document.body
   ) {
 
-    const text =
-      String(
-        heading.textContent || ''
-      )
-        .trim()
-        .toLowerCase();
-
-
     if (
-      text === normalizedSearch ||
-      text.includes(
-        normalizedSearch
+      node.contains(
+        startButton
       )
     ) {
 
-      const card =
-        heading.closest(
-          '.card, .section, .panel, .contentCard, .scannerCard'
-        );
-
-
-      if (
-        card
-      ) {
-
-        return card;
-      }
-
-
-      if (
-        heading.parentElement
-      ) {
-
-        return heading.parentElement;
-      }
+      return node;
     }
+
+
+    node =
+      node.parentElement;
   }
 
 
@@ -286,11 +230,53 @@ function findSectionByHeadingText(
 }
 
 
-/* ==========================================================
-   FIND CAMERA SECTION
-========================================================== */
+/*
+ * Returns direct child of ancestor
+ * containing the requested element.
+ */
 
-function findCameraSection() {
+function directChildInside(
+  element,
+  ancestor
+) {
+
+  if (
+    !element ||
+    !ancestor ||
+    !ancestor.contains(
+      element
+    )
+  ) {
+
+    return null;
+  }
+
+
+  let current =
+    element;
+
+
+  while (
+    current.parentElement &&
+    current.parentElement !== ancestor
+  ) {
+
+    current =
+      current.parentElement;
+  }
+
+
+  return current;
+}
+
+
+/*
+ * Find camera display block only.
+ */
+
+function findCameraViewBlock(
+  workspace
+) {
 
   const camera =
     document.getElementById(
@@ -299,110 +285,23 @@ function findCameraSection() {
 
 
   if (
-    !camera
+    !camera ||
+    !workspace
   ) {
 
     return null;
   }
 
 
-  /*
-   * Look for a reasonable card/container.
-   */
-
-  let current =
-    camera.parentElement;
-
-
-  while (
-    current &&
-    current !== document.body
-  ) {
-
-    /*
-     * Stop when the element also contains
-     * START CAMERA button.
-     */
-
-    if (
-      current.querySelector(
-        '#startCameraBtn'
-      )
-    ) {
-
-      return current;
-    }
-
-
-    current =
-      current.parentElement;
-  }
-
-
-  return camera.parentElement;
-}
-
-
-/* ==========================================================
-   MOVE LIVE SCAN BEFORE CAMERA
-========================================================== */
-
-function moveLiveScanBeforeCamera() {
-
-  const livePanel =
-    document.getElementById(
-      'liveScanPanel'
-    );
-
-
-  const cameraSection =
-    findCameraSection();
-
-
-  if (
-    !livePanel ||
-    !cameraSection
-  ) {
-
-    console.warn(
-      'V1.3.2.1: Live Scan or Camera section not found.'
-    );
-
-    return;
-  }
-
-
-  if (
-    livePanel ===
-    cameraSection
-  ) {
-
-    return;
-  }
-
-
-  cameraSection.insertAdjacentElement(
-    'beforebegin',
-    livePanel
-  );
-
-
-  livePanel.style.marginTop =
-    '0';
-
-
-  livePanel.style.marginBottom =
-    '14px';
-
-
-  console.log(
-    'V1.3.2.1: LIVE MAC SCAN moved before camera.'
+  return directChildInside(
+    camera,
+    workspace
   );
 }
 
 
 /* ==========================================================
-   FIND OCR RESULT CARD
+   FIND OCR RESULT
 ========================================================== */
 
 function findOCRResultCard() {
@@ -437,6 +336,7 @@ function findOCRResultCard() {
         String(
           heading.textContent || ''
         )
+          .trim()
           .toLowerCase()
           .includes(
             'ocr result'
@@ -460,10 +360,20 @@ function findOCRResultCard() {
 
 
 /* ==========================================================
-   MOVE OCR RESULT BELOW LARGE MAC
+   EXACT MAIN FLOW
 ========================================================== */
 
-function moveOCRResultBelowCompactMac() {
+function arrangePrimaryScannerFlow() {
+
+  const workspace =
+    findScannerWorkspace();
+
+
+  const livePanel =
+    document.getElementById(
+      'liveScanPanel'
+    );
+
 
   const compact =
     document.getElementById(
@@ -476,31 +386,93 @@ function moveOCRResultBelowCompactMac() {
 
 
   if (
+    !workspace
+  ) {
+
+    console.warn(
+      'V1.3.2.2: Scanner workspace not found.'
+    );
+
+    return;
+  }
+
+
+  const cameraView =
+    findCameraViewBlock(
+      workspace
+    );
+
+
+  if (
+    !livePanel ||
+    !cameraView ||
     !compact ||
     !ocrResult
   ) {
 
     console.warn(
-      'V1.3.2.1: OCR Result section could not be moved.'
+      'V1.3.2.2: Exact scanner flow could not be built.',
+      {
+        livePanel:
+          Boolean(
+            livePanel
+          ),
+
+        cameraView:
+          Boolean(
+            cameraView
+          ),
+
+        compact:
+          Boolean(
+            compact
+          ),
+
+        ocrResult:
+          Boolean(
+            ocrResult
+          )
+      }
     );
+
 
     return;
   }
 
 
-  if (
-    ocrResult.contains(
-      compact
-    )
-  ) {
+  /*
+   * 1. LIVE MAC SCAN first
+   */
 
-    console.warn(
-      'OCR Result contains Compact MAC. Move skipped.'
-    );
+  workspace.insertBefore(
+    livePanel,
+    workspace.firstElementChild
+  );
 
-    return;
-  }
 
+  /*
+   * 2. CAMERA immediately after LIVE
+   */
+
+  livePanel.insertAdjacentElement(
+    'afterend',
+    cameraView
+  );
+
+
+  /*
+   * 3. LARGE MAC immediately after camera
+   */
+
+  cameraView.insertAdjacentElement(
+    'afterend',
+    compact
+  );
+
+
+  /*
+   * 4. OCR Result immediately after MAC
+   */
 
   compact.insertAdjacentElement(
     'afterend',
@@ -508,22 +480,123 @@ function moveOCRResultBelowCompactMac() {
   );
 
 
-  ocrResult.style.marginTop =
+  livePanel.style.marginTop =
+    '0';
+
+
+  livePanel.style.marginBottom =
     '10px';
+
+
+  cameraView.style.marginTop =
+    '0';
+
+
+  cameraView.style.marginBottom =
+    '10px';
+
+
+  compact.style.marginTop =
+    '0';
+
+
+  compact.style.marginBottom =
+    '10px';
+
+
+  ocrResult.style.marginTop =
+    '0';
 
 
   ocrResult.style.marginBottom =
-    '10px';
+    '12px';
 
 
   console.log(
-    'V1.3.2.1: OCR Result moved under large MAC.'
+    'V1.3.2.2 layout: LIVE → CAMERA → MAC → OCR RESULT.'
   );
 }
 
 
 /* ==========================================================
-   FIND LOCAL PADDLEOCR CARD
+   FIND SECTION BY HEADING
+========================================================== */
+
+function findSectionByHeadingText(
+  searchText
+) {
+
+  const wanted =
+    String(
+      searchText || ''
+    )
+      .trim()
+      .toLowerCase();
+
+
+  if (
+    !wanted
+  ) {
+
+    return null;
+  }
+
+
+  const headings =
+    document.querySelectorAll(
+      'h1, h2, h3, h4, h5, h6'
+    );
+
+
+  for (
+    const heading of headings
+  ) {
+
+    const text =
+      String(
+        heading.textContent || ''
+      )
+        .trim()
+        .toLowerCase();
+
+
+    if (
+      text === wanted ||
+      text.includes(
+        wanted
+      )
+    ) {
+
+      const card =
+        heading.closest(
+          '.card, .section, .panel, .contentCard, .scannerCard'
+        );
+
+
+      if (
+        card
+      ) {
+
+        return card;
+      }
+
+
+      if (
+        heading.parentElement
+      ) {
+
+        return heading.parentElement;
+      }
+    }
+  }
+
+
+  return null;
+}
+
+
+/* ==========================================================
+   LOCAL PADDLEOCR -> LAST
 ========================================================== */
 
 function findPaddleOCRCard() {
@@ -558,6 +631,7 @@ function findPaddleOCRCard() {
         String(
           heading.textContent || ''
         )
+          .trim()
           .toLowerCase()
           .includes(
             'local paddleocr'
@@ -580,10 +654,6 @@ function findPaddleOCRCard() {
 }
 
 
-/* ==========================================================
-   MOVE LOCAL PADDLEOCR TO BOTTOM
-========================================================== */
-
 function movePaddleOCRSectionToBottom() {
 
   const paddleCard =
@@ -591,30 +661,19 @@ function movePaddleOCRSectionToBottom() {
 
 
   if (
-    !paddleCard
+    !paddleCard ||
+    !paddleCard.parentElement
   ) {
 
     console.warn(
-      'V1.3.2.1: Local PaddleOCR section not found.'
+      'V1.3.2.2: Local PaddleOCR section not found.'
     );
 
     return;
   }
 
 
-  const container =
-    paddleCard.parentElement;
-
-
-  if (
-    !container
-  ) {
-
-    return;
-  }
-
-
-  container.appendChild(
+  paddleCard.parentElement.appendChild(
     paddleCard
   );
 
@@ -625,11 +684,6 @@ function movePaddleOCRSectionToBottom() {
 
   paddleCard.style.marginBottom =
     '20px';
-
-
-  console.log(
-    'V1.3.2.1: Local PaddleOCR moved to bottom.'
-  );
 }
 
 
@@ -1050,7 +1104,7 @@ function updateCompactMacResult(
 
 
 /* ==========================================================
-   CREATE LIVE SCAN UI
+   LIVE SCAN UI
 ========================================================== */
 
 function createLiveScanUI() {
@@ -1175,34 +1229,6 @@ function createLiveScanUI() {
   `;
 
 
-  /*
-   * Temporarily insert before camera.
-   * reorderApplicationLayout() will
-   * confirm exact position.
-   */
-
-  const cameraSection =
-    findCameraSection();
-
-
-  if (
-    cameraSection
-  ) {
-
-    cameraSection.insertAdjacentElement(
-      'beforebegin',
-      panel
-    );
-
-
-    return;
-  }
-
-
-  /*
-   * Fallback.
-   */
-
   const startCamera =
     document.getElementById(
       'startCameraBtn'
@@ -1211,13 +1237,19 @@ function createLiveScanUI() {
 
   if (
     startCamera &&
-    startCamera.parentElement
+    startCamera.parentElement &&
+    startCamera.parentElement.parentElement
   ) {
 
-    startCamera.parentElement
-      .insertAdjacentElement(
-        'beforebegin',
-        panel
+    startCamera
+      .parentElement
+      .parentElement
+      .insertBefore(
+        panel,
+        startCamera
+          .parentElement
+          .parentElement
+          .firstElementChild
       );
   }
 }
@@ -1427,7 +1459,7 @@ function getOCREndpoint(
 
 
 /* ==========================================================
-   HEALTH CHECK
+   OCR HEALTH
 ========================================================== */
 
 async function checkOCRServer() {
@@ -2028,24 +2060,11 @@ function captureLiveFrame() {
     0.88;
 
 
-  let cropHeight;
-
-
-  if (
+  const cropHeight =
     scanMode ===
     'screen'
-  ) {
-
-    cropHeight =
-      sourceHeight *
-      0.26;
-
-  } else {
-
-    cropHeight =
-      sourceHeight *
-      0.42;
-  }
+      ? sourceHeight * 0.26
+      : sourceHeight * 0.42;
 
 
   const startX =
@@ -3750,7 +3769,7 @@ function handleMacInput() {
 
 
 /* ==========================================================
-   CONFIRM
+   CONFIRM MAC
 ========================================================== */
 
 function confirmMac() {
@@ -4454,7 +4473,7 @@ function renderRecent(
 
 
 /* ==========================================================
-   OCR STATUS UI
+   OCR UI
 ========================================================== */
 
 function setOCRStatus(
