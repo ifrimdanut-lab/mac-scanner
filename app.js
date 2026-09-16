@@ -1,21 +1,19 @@
 /**
  * ==========================================================
  * ICHC MAC Scanner
- * Version V1.2.0.1
+ * Version V1.2.1
  * Local PaddleOCR Engine
+ * Permanent Tailscale Funnel
  * ==========================================================
  */
 
 const APP_VERSION =
-  'V1.2.0.1';
+  'V1.2.1';
 
 
 /**
  * ==========================================================
  * GOOGLE APPS SCRIPT BACKEND
- *
- * IMPORTANT:
- * Keep your real Apps Script /exec URL here.
  * ==========================================================
  */
 
@@ -25,9 +23,13 @@ const GOOGLE_API_URL =
 
 /**
  * ==========================================================
- * LOCAL OCR BACKEND
+ * OCR BACKEND
  *
- * V1.2.0.1 automatically cleans:
+ * Permanent Tailscale Funnel:
+ *
+ * https://pc-home.tail51a762.ts.net
+ *
+ * Protection automatically removes:
  *
  * /health
  * /ocr
@@ -84,6 +86,18 @@ document.addEventListener(
 
   async function () {
 
+    console.log(
+      'ICHC MAC Scanner',
+      APP_VERSION
+    );
+
+
+    console.log(
+      'OCR Base URL:',
+      OCR_API_URL
+    );
+
+
     setScanMode(
       'screen'
     );
@@ -112,17 +126,17 @@ document.addEventListener(
  *
  * Examples:
  *
- * https://abc.trycloudflare.com/
+ * https://abc.ts.net/
  * ->
- * https://abc.trycloudflare.com
+ * https://abc.ts.net
  *
- * https://abc.trycloudflare.com/health
+ * https://abc.ts.net/health
  * ->
- * https://abc.trycloudflare.com
+ * https://abc.ts.net
  *
- * https://abc.trycloudflare.com/ocr
+ * https://abc.ts.net/ocr
  * ->
- * https://abc.trycloudflare.com
+ * https://abc.ts.net
  * ==========================================================
  */
 
@@ -147,7 +161,7 @@ function normalizeOCRBaseURL(
 
 
   /*
-   * Remove query string and hash.
+   * Remove query string.
    */
 
   url =
@@ -155,6 +169,10 @@ function normalizeOCRBaseURL(
       '?'
     )[0];
 
+
+  /*
+   * Remove hash.
+   */
 
   url =
     url.split(
@@ -174,7 +192,7 @@ function normalizeOCRBaseURL(
 
 
   /*
-   * Remove accidental endpoint.
+   * Remove accidental endpoints.
    */
 
   url =
@@ -192,8 +210,7 @@ function normalizeOCRBaseURL(
 
 
   /*
-   * Clean again in case endpoint removal
-   * leaves trailing slash.
+   * Clean trailing slash again.
    */
 
   url =
@@ -204,6 +221,40 @@ function normalizeOCRBaseURL(
 
 
   return url;
+
+}
+
+
+
+/**
+ * ==========================================================
+ * BUILD OCR ENDPOINT
+ * ==========================================================
+ */
+
+function getOCREndpoint(
+  path
+) {
+
+  const cleanPath =
+    String(
+      path || ''
+    )
+      .replace(
+        /^\/+/,
+        ''
+      );
+
+
+  return (
+    normalizeOCRBaseURL(
+      OCR_API_URL
+    )
+    +
+    '/'
+    +
+    cleanPath
+  );
 
 }
 
@@ -235,8 +286,9 @@ async function checkOCRServer() {
 
 
   const healthURL =
-    OCR_API_URL +
-    '/health';
+    getOCREndpoint(
+      'health'
+    );
 
 
   const text =
@@ -245,14 +297,38 @@ async function checkOCRServer() {
     );
 
 
-  text.textContent =
-    'Checking PaddleOCR server...';
+  if (
+    text
+  ) {
+
+    text.textContent =
+      'Checking PaddleOCR server...';
+
+  }
 
 
   console.log(
     'OCR health URL:',
     healthURL
   );
+
+
+  const controller =
+    new AbortController();
+
+
+  const timeoutId =
+    setTimeout(
+
+      function () {
+
+        controller.abort();
+
+      },
+
+      10000
+
+    );
 
 
   try {
@@ -270,6 +346,9 @@ async function checkOCRServer() {
           cache:
             'no-store',
 
+          signal:
+            controller.signal,
+
           headers: {
 
             'Accept':
@@ -280,6 +359,11 @@ async function checkOCRServer() {
         }
 
       );
+
+
+    clearTimeout(
+      timeoutId
+    );
 
 
     if (
@@ -330,10 +414,30 @@ async function checkOCRServer() {
     error
   ) {
 
+    clearTimeout(
+      timeoutId
+    );
+
+
     console.error(
       'OCR health error:',
       error
     );
+
+
+    let message =
+      error.message;
+
+
+    if (
+      error.name ===
+      'AbortError'
+    ) {
+
+      message =
+        'Connection timeout';
+
+    }
 
 
     setOCRServerState(
@@ -341,7 +445,7 @@ async function checkOCRServer() {
       false,
 
       'OCR server offline • ' +
-      error.message
+      message
 
     );
 
@@ -857,28 +961,52 @@ async function startCamera(
     }
 
 
-    document
-      .getElementById(
+    const scanButton =
+      document.getElementById(
         'scanBtn'
-      )
-      .disabled =
-      false;
+      );
 
 
-    document
-      .getElementById(
+    if (
+      scanButton
+    ) {
+
+      scanButton.disabled =
+        false;
+
+    }
+
+
+    const switchButton =
+      document.getElementById(
         'switchCameraBtn'
-      )
-      .disabled =
-      false;
+      );
 
 
-    document
-      .getElementById(
+    if (
+      switchButton
+    ) {
+
+      switchButton.disabled =
+        false;
+
+    }
+
+
+    const startButton =
+      document.getElementById(
         'startCameraBtn'
-      )
-      .textContent =
-      'RESTART CAMERA';
+      );
+
+
+    if (
+      startButton
+    ) {
+
+      startButton.textContent =
+        'RESTART CAMERA';
+
+    }
 
 
     const track =
@@ -1491,14 +1619,15 @@ async function sendCanvasToOCR(
 
     'Sending image to PaddleOCR...',
 
-    'Connecting to local OCR server'
+    'Connecting to OCR server'
 
   );
 
 
   const ocrURL =
-    OCR_API_URL +
-    '/ocr';
+    getOCREndpoint(
+      'ocr'
+    );
 
 
   console.log(
@@ -1791,12 +1920,18 @@ function handleOCRResult(
       );
 
 
-    validation.textContent =
-      'PaddleOCR read the image, but no MAC pattern was detected.';
+    if (
+      validation
+    ) {
+
+      validation.textContent =
+        'PaddleOCR read the image, but no MAC pattern was detected.';
 
 
-    validation.style.color =
-      '#d63b3b';
+      validation.style.color =
+        '#d63b3b';
+
+    }
 
 
     showMessage(
@@ -1865,6 +2000,16 @@ function renderCandidates(
     document.getElementById(
       'candidateList'
     );
+
+
+  if (
+    !section ||
+    !list
+  ) {
+
+    return;
+
+  }
 
 
   list.innerHTML =
@@ -1979,12 +2124,20 @@ function selectCandidate(
   }
 
 
-  document
-    .getElementById(
+  const input =
+    document.getElementById(
       'macInput'
-    )
-    .value =
-    normalized;
+    );
+
+
+  if (
+    input
+  ) {
+
+    input.value =
+      normalized;
+
+  }
 
 
   macConfirmed =
@@ -2006,30 +2159,53 @@ function selectCandidate(
     );
 
 
-  validation.textContent =
-    'Compare this MAC with the device, then press CONFIRM MAC ADDRESS.';
+  if (
+    validation
+  ) {
+
+    validation.textContent =
+      'Compare this MAC with the device, then press CONFIRM MAC ADDRESS.';
 
 
-  validation.style.color =
-    '#84590b';
+    validation.style.color =
+      '#84590b';
+
+  }
 
 
-  document
-    .getElementById(
+  const confirmButton =
+    document.getElementById(
       'confirmBtn'
-    )
-    .classList
-    .remove(
-      'hidden'
     );
 
 
-  document
-    .getElementById(
+  if (
+    confirmButton
+  ) {
+
+    confirmButton
+      .classList
+      .remove(
+        'hidden'
+      );
+
+  }
+
+
+  const saveButton =
+    document.getElementById(
       'saveBtn'
-    )
-    .disabled =
-    true;
+    );
+
+
+  if (
+    saveButton
+  ) {
+
+    saveButton.disabled =
+      true;
+
+  }
 
 }
 
@@ -2047,6 +2223,15 @@ function handleMacInput() {
     document.getElementById(
       'macInput'
     );
+
+
+  if (
+    !input
+  ) {
+
+    return;
+
+  }
 
 
   let clean =
@@ -2127,50 +2312,90 @@ function handleMacInput() {
     );
 
 
-    document
-      .getElementById(
+    const confirmButton =
+      document.getElementById(
         'confirmBtn'
-      )
-      .classList
-      .remove(
-        'hidden'
       );
 
 
-    document
-      .getElementById(
+    if (
+      confirmButton
+    ) {
+
+      confirmButton
+        .classList
+        .remove(
+          'hidden'
+        );
+
+    }
+
+
+    const saveButton =
+      document.getElementById(
         'saveBtn'
-      )
-      .disabled =
-      true;
+      );
 
 
-    validation.textContent =
-      'Valid format. Confirm the value before saving.';
+    if (
+      saveButton
+    ) {
+
+      saveButton.disabled =
+        true;
+
+    }
 
 
-    validation.style.color =
-      '#84590b';
+    if (
+      validation
+    ) {
+
+      validation.textContent =
+        'Valid format. Confirm the value before saving.';
+
+
+      validation.style.color =
+        '#84590b';
+
+    }
 
 
   } else {
 
-    document
-      .getElementById(
+    const confirmButton =
+      document.getElementById(
         'confirmBtn'
-      )
-      .classList
-      .add(
-        'hidden'
       );
 
 
-    document
-      .getElementById(
+    if (
+      confirmButton
+    ) {
+
+      confirmButton
+        .classList
+        .add(
+          'hidden'
+        );
+
+    }
+
+
+    const saveButton =
+      document.getElementById(
         'saveBtn'
-      )
-      .disabled =
-      true;
+      );
+
+
+    if (
+      saveButton
+    ) {
+
+      saveButton.disabled =
+        true;
+
+    }
 
 
     if (
@@ -2186,12 +2411,18 @@ function handleMacInput() {
       );
 
 
-      validation.textContent =
-        'Incomplete or invalid MAC Address.';
+      if (
+        validation
+      ) {
+
+        validation.textContent =
+          'Incomplete or invalid MAC Address.';
 
 
-      validation.style.color =
-        '#d63b3b';
+        validation.style.color =
+          '#d63b3b';
+
+      }
 
 
     } else {
@@ -2205,8 +2436,14 @@ function handleMacInput() {
       );
 
 
-      validation.textContent =
-        '';
+      if (
+        validation
+      ) {
+
+        validation.textContent =
+          '';
+
+      }
 
     }
 
@@ -2228,6 +2465,15 @@ function confirmMac() {
     document.getElementById(
       'macInput'
     );
+
+
+  if (
+    !input
+  ) {
+
+    return;
+
+  }
 
 
   const mac =
@@ -2276,30 +2522,53 @@ function confirmMac() {
     );
 
 
-  validation.textContent =
-    'MAC verified and ready to save.';
+  if (
+    validation
+  ) {
+
+    validation.textContent =
+      'MAC verified and ready to save.';
 
 
-  validation.style.color =
-    '#16864b';
+    validation.style.color =
+      '#16864b';
+
+  }
 
 
-  document
-    .getElementById(
+  const confirmButton =
+    document.getElementById(
       'confirmBtn'
-    )
-    .classList
-    .add(
-      'hidden'
     );
 
 
-  document
-    .getElementById(
+  if (
+    confirmButton
+  ) {
+
+    confirmButton
+      .classList
+      .add(
+        'hidden'
+      );
+
+  }
+
+
+  const saveButton =
+    document.getElementById(
       'saveBtn'
-    )
-    .disabled =
-    false;
+    );
+
+
+  if (
+    saveButton
+  ) {
+
+    saveButton.disabled =
+      false;
+
+  }
 
 
   showMessage(
@@ -2524,15 +2793,24 @@ function saveAndNext() {
   }
 
 
+  const input =
+    document.getElementById(
+      'macInput'
+    );
+
+
+  if (
+    !input
+  ) {
+
+    return;
+
+  }
+
+
   const mac =
     normalizeMac(
-
-      document
-        .getElementById(
-          'macInput'
-        )
-        .value
-
+      input.value
     );
 
 
@@ -2551,12 +2829,36 @@ function saveAndNext() {
     );
 
 
-  button.disabled =
-    true;
+  if (
+    button
+  ) {
+
+    button.disabled =
+      true;
 
 
-  button.textContent =
-    'SAVING...';
+    button.textContent =
+      'SAVING...';
+
+  }
+
+
+  const deviceElement =
+    document.getElementById(
+      'deviceType'
+    );
+
+
+  const locationElement =
+    document.getElementById(
+      'location'
+    );
+
+
+  const noteElement =
+    document.getElementById(
+      'note'
+    );
 
 
   apiRequest(
@@ -2573,28 +2875,19 @@ function saveAndNext() {
         mac,
 
       device:
-
-        document
-          .getElementById(
-            'deviceType'
-          )
-          .value,
+        deviceElement
+          ? deviceElement.value
+          : '',
 
       location:
-
-        document
-          .getElementById(
-            'location'
-          )
-          .value,
+        locationElement
+          ? locationElement.value
+          : '',
 
       note:
-
-        document
-          .getElementById(
-            'note'
-          )
-          .value
+        noteElement
+          ? noteElement.value
+          : ''
 
     },
 
@@ -2602,28 +2895,44 @@ function saveAndNext() {
       result
     ) {
 
-      button.textContent =
-        'SAVE & SCAN NEXT';
+      if (
+        button
+      ) {
+
+        button.textContent =
+          'SAVE & SCAN NEXT';
+
+      }
 
 
       if (
         result.success
       ) {
 
-        document
-          .getElementById(
+        const count =
+          document.getElementById(
             'deviceCount'
-          )
-          .textContent =
-          result.count;
+          );
 
 
-        document
-          .getElementById(
-            'note'
-          )
-          .value =
-          '';
+        if (
+          count
+        ) {
+
+          count.textContent =
+            result.count;
+
+        }
+
+
+        if (
+          noteElement
+        ) {
+
+          noteElement.value =
+            '';
+
+        }
 
 
         resetMacState();
@@ -2655,8 +2964,14 @@ function saveAndNext() {
 
       } else {
 
-        button.disabled =
-          false;
+        if (
+          button
+        ) {
+
+          button.disabled =
+            false;
+
+        }
 
 
         showMessage(
@@ -2677,12 +2992,18 @@ function saveAndNext() {
 
     function () {
 
-      button.textContent =
-        'SAVE & SCAN NEXT';
+      if (
+        button
+      ) {
+
+        button.textContent =
+          'SAVE & SCAN NEXT';
 
 
-      button.disabled =
-        false;
+        button.disabled =
+          false;
+
+      }
 
 
       showMessage(
@@ -2734,13 +3055,21 @@ function loadDashboard() {
       }
 
 
-      document
-        .getElementById(
+      const count =
+        document.getElementById(
           'deviceCount'
-        )
-        .textContent =
-        data.count ||
-        0;
+        );
+
+
+      if (
+        count
+      ) {
+
+        count.textContent =
+          data.count ||
+          0;
+
+      }
 
 
       renderRecent(
@@ -3400,3 +3729,23 @@ function escapeHtml(
     );
 
 }
+
+
+
+/**
+ * ==========================================================
+ * CLEANUP
+ * ==========================================================
+ */
+
+window.addEventListener(
+
+  'beforeunload',
+
+  function () {
+
+    stopCamera();
+
+  }
+
+);
