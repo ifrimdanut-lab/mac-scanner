@@ -1,6 +1,6 @@
 const APP_VERSION='V1.2.0';
 const GOOGLE_API_URL='https://script.google.com/a/macros/ichc.ro/s/AKfycbzDAauThmGXzKtRIYZMbgutyJI3XO_r5uRLuLhqTG8putr6wpGcfE38_dmYmdEi9XY/exec';
-const OCR_API_URL='https://math-max-mlb-poems.trycloudflare.com/health';
+const OCR_API_URL='https://math-max-mlb-poems.trycloudflare.com';
 let scanMode='screen',cameraStream=null,videoDevices=[],currentDeviceId=null,ocrBusy=false,macConfirmed=false;
 
 document.addEventListener('DOMContentLoaded',async()=>{setScanMode('screen');resetMacState();loadDashboard();await discoverCameras();checkOCRServer();});
