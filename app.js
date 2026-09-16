@@ -15,7 +15,7 @@
  */
 
 const API_URL =
-  'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
+  'https://script.google.com/a/macros/ichc.ro/s/AKfycbzDAauThmGXzKtRIYZMbgutyJI3XO_r5uRLuLhqTG8putr6wpGcfE38_dmYmdEi9XY/exec';
 
 
 const APP_VERSION =
