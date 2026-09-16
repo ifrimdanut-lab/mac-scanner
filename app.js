@@ -2,10 +2,9 @@
  * ==========================================================
  * ICHC MAC Scanner
  *
- * Version: V1.1.4
- * Balanced OCR Engine
+ * Version: V1.1.5
+ * Guided Capture Mode
  *
- * External Camera Engine
  * ==========================================================
  */
 
@@ -14,6 +13,11 @@
  * ==========================================================
  * CONFIGURATION
  * ==========================================================
+ *
+ * IMPORTANT:
+ *
+ * Replace the value below with your real Apps Script
+ * Web App URL ending in /exec
  */
 
 const API_URL =
@@ -21,55 +25,35 @@ const API_URL =
 
 
 const APP_VERSION =
-  'V1.1.4';
+  'V1.1.5';
 
 
-/*
- * Three independent camera frames.
- */
-const CAMERA_CAPTURE_COUNT =
-  3;
-
-
-/*
- * Each frame uses:
- * 1. Original image
- * 2. High contrast image
- *
- * Maximum OCR operations = 6.
- */
-const OCR_VARIANTS_PER_FRAME =
-  2;
-
-
-const INITIAL_STABILIZE_MS =
-  350;
-
-
-const CAPTURE_INTERVAL_MS =
-  250;
-
-
-/*
- * Minimum number of valid OCR readings
- * required to build a consensus.
- */
-const MIN_VALID_READINGS =
-  2;
-
-
-/*
- * Character agreement threshold.
- */
-const CHARACTER_CONSENSUS_RATIO =
-  0.67;
-
-
-/*
- * OCR operation timeout.
- */
 const OCR_TIMEOUT_MS =
-  10000;
+  12000;
+
+
+/**
+ * Crop dimensions relative to the live camera.
+ *
+ * These values correspond approximately
+ * with the green guide in index.html.
+ */
+
+const GUIDE_WIDTH_RATIO =
+  0.90;
+
+
+const GUIDE_HEIGHT_RATIO =
+  0.28;
+
+
+/**
+ * Static captured image is enlarged
+ * before OCR.
+ */
+
+const OCR_SCALE =
+  2.25;
 
 
 
@@ -103,24 +87,20 @@ let ocrBusy =
   false;
 
 
-let macVerification = {
+let capturedImageReady =
+  false;
 
-  mode:
-    'none',
 
-  confirmed:
-    false,
+let currentDetectedMac =
+  null;
 
-  confidence:
-    '',
 
-  details:
-    '',
+let macConfirmed =
+  false;
 
-  mac:
-    ''
 
-};
+let manualEdit =
+  false;
 
 
 
@@ -136,13 +116,18 @@ document.addEventListener(
 
   async function () {
 
+
     updateVersionUI();
 
-    handleMacInput();
+
+    resetMacState();
+
 
     loadDashboard();
 
+
     await discoverCameras();
+
 
   }
 
@@ -152,72 +137,27 @@ document.addEventListener(
 
 /**
  * ==========================================================
- * VERSION UI
+ * VERSION
  * ==========================================================
  */
 
 function updateVersionUI() {
 
-  const versionBox =
-    document.querySelector(
-      '.version'
+
+  const version =
+    document.getElementById(
+      'versionBadge'
     );
 
 
   if (
-    versionBox
+    version
   ) {
 
-    versionBox.textContent =
+    version.textContent =
       APP_VERSION;
 
   }
-
-
-  const footer =
-    document.querySelector(
-      'footer'
-    );
-
-
-  if (
-    footer
-  ) {
-
-    footer.textContent =
-      'ICHC MAC Scanner • Balanced OCR Engine • ' +
-      APP_VERSION;
-
-  }
-
-}
-
-
-
-/**
- * ==========================================================
- * DELAY
- * ==========================================================
- */
-
-function sleep(
-  ms
-) {
-
-  return new Promise(
-
-    function (
-      resolve
-    ) {
-
-      setTimeout(
-        resolve,
-        ms
-      );
-
-    }
-
-  );
 
 }
 
@@ -231,6 +171,7 @@ function sleep(
 
 async function discoverCameras() {
 
+
   if (
 
     !navigator.mediaDevices ||
@@ -239,10 +180,15 @@ async function discoverCameras() {
 
   ) {
 
+
     showMessage(
+
       'This browser does not support camera access.',
+
       'error'
+
     );
+
 
     return;
 
@@ -251,13 +197,17 @@ async function discoverCameras() {
 
   try {
 
+
     const devices =
+
       await navigator
         .mediaDevices
         .enumerateDevices();
 
 
+
     videoDevices =
+
       devices.filter(
 
         function (
@@ -281,10 +231,15 @@ async function discoverCameras() {
     error
   ) {
 
+
     console.error(
+
       'Camera discovery error:',
+
       error
+
     );
+
 
   }
 
@@ -294,19 +249,22 @@ async function discoverCameras() {
 
 /**
  * ==========================================================
- * CAMERA LIST
+ * CAMERA SELECT
  * ==========================================================
  */
 
 function populateCameraList() {
 
+
   const select =
+
     document.getElementById(
       'cameraSelect'
     );
 
 
   const row =
+
     document.getElementById(
       'cameraSelectRow'
     );
@@ -327,13 +285,17 @@ function populateCameraList() {
 
 
   if (
+
     videoDevices.length ===
     0
+
   ) {
+
 
     row.classList.add(
       'hidden'
     );
+
 
     return;
 
@@ -347,7 +309,9 @@ function populateCameraList() {
       index
     ) {
 
+
       const option =
+
         document.createElement(
           'option'
         );
@@ -358,7 +322,9 @@ function populateCameraList() {
 
 
       option.textContent =
+
         device.label ||
+
         (
           'Camera ' +
           (index + 1)
@@ -368,6 +334,7 @@ function populateCameraList() {
       select.appendChild(
         option
       );
+
 
     }
 
@@ -392,7 +359,9 @@ async function startCamera(
   requestedDeviceId = null
 ) {
 
+
   const video =
+
     document.getElementById(
       'camera'
     );
@@ -400,36 +369,51 @@ async function startCamera(
 
   try {
 
+
     stopCamera();
 
 
+    resetCaptureState();
+
+
     let constraints;
+
 
 
     if (
       requestedDeviceId
     ) {
 
+
       constraints = {
 
         video: {
 
           deviceId: {
+
             exact:
               requestedDeviceId
+
           },
+
 
           width: {
+
             ideal:
               1920
+
           },
 
+
           height: {
+
             ideal:
               1080
+
           }
 
         },
+
 
         audio:
           false
@@ -439,26 +423,36 @@ async function startCamera(
 
     } else {
 
+
       constraints = {
 
         video: {
 
           facingMode: {
+
             ideal:
               'environment'
+
           },
+
 
           width: {
+
             ideal:
               1920
+
           },
 
+
           height: {
+
             ideal:
               1080
+
           }
 
         },
+
 
         audio:
           false
@@ -468,7 +462,9 @@ async function startCamera(
     }
 
 
+
     cameraStream =
+
       await navigator
         .mediaDevices
         .getUserMedia(
@@ -476,71 +472,101 @@ async function startCamera(
         );
 
 
+
     video.srcObject =
       cameraStream;
+
 
 
     await video.play();
 
 
+
     document
+
       .getElementById(
         'cameraPlaceholder'
       )
+
       .classList
+
       .add(
         'hidden'
       );
 
 
+
     document
+
       .getElementById(
-        'scanBtn'
+        'captureBtn'
       )
+
       .disabled =
       false;
 
 
+
     document
+
       .getElementById(
         'switchCameraBtn'
       )
+
       .disabled =
       false;
 
 
+
     document
+
       .getElementById(
         'startCameraBtn'
       )
+
       .textContent =
       'RESTART CAMERA';
+
+
+
+    const activeTrack =
+
+      cameraStream
+        .getVideoTracks()[0];
+
+
+
+    const settings =
+
+      activeTrack
+        .getSettings();
+
+
+
+    currentDeviceId =
+
+      settings.deviceId ||
+      null;
+
 
 
     await discoverCameras();
 
 
-    const activeTrack =
-      cameraStream
-        .getVideoTracks()[0];
-
-
-    const settings =
-      activeTrack
-        .getSettings();
-
-
-    currentDeviceId =
-      settings.deviceId ||
-      null;
-
-
     syncCameraSelector();
 
 
+    configureZoom(
+      activeTrack
+    );
+
+
     setSystemStatus(
+
       'Camera ready',
+
       true
+
     );
 
 
@@ -548,8 +574,8 @@ async function startCamera(
     error
   ) {
 
+
     console.error(
-      'Camera error:',
       error
     );
 
@@ -557,6 +583,7 @@ async function startCamera(
     handleCameraError(
       error
     );
+
 
   }
 
@@ -572,6 +599,7 @@ async function startCamera(
 
 function stopCamera() {
 
+
   if (
     !cameraStream
   ) {
@@ -582,7 +610,9 @@ function stopCamera() {
 
 
   cameraStream
+
     .getTracks()
+
     .forEach(
 
       function (
@@ -613,13 +643,17 @@ function handleCameraError(
   error
 ) {
 
+
   let message =
+
     'Camera could not be started.';
+
 
 
   switch (
     error.name
   ) {
+
 
     case 'NotAllowedError':
 
@@ -664,14 +698,20 @@ function handleCameraError(
 
 
   setSystemStatus(
+
     'Camera unavailable',
+
     false
+
   );
 
 
   showMessage(
+
     message,
+
     'error'
+
   );
 
 }
@@ -686,7 +726,9 @@ function handleCameraError(
 
 async function changeCamera() {
 
+
   const select =
+
     document.getElementById(
       'cameraSelect'
     );
@@ -716,13 +758,15 @@ async function changeCamera() {
 
 /**
  * ==========================================================
- * SYNC CAMERA SELECTOR
+ * SYNC CAMERA
  * ==========================================================
  */
 
 function syncCameraSelector() {
 
+
   const select =
+
     document.getElementById(
       'cameraSelect'
     );
@@ -733,8 +777,10 @@ function syncCameraSelector() {
     currentDeviceId
   ) {
 
+
     select.value =
       currentDeviceId;
+
 
   }
 
@@ -750,48 +796,70 @@ function syncCameraSelector() {
 
 async function switchCamera() {
 
+
   if (
+
     videoDevices.length <
     2
+
   ) {
 
+
     showMessage(
+
       'Only one camera is available.',
+
       'warning'
+
     );
+
 
     return;
 
   }
 
 
+
   const currentIndex =
+
     videoDevices.findIndex(
 
       function (
         device
       ) {
 
+
         return (
+
           device.deviceId ===
           currentDeviceId
+
         );
+
 
       }
 
     );
 
 
+
   currentCameraIndex =
+
     currentIndex >= 0
+
       ? currentIndex + 1
+
       : 0;
 
 
+
   if (
+
     currentCameraIndex >=
     videoDevices.length
+
   ) {
+
 
     currentCameraIndex =
       0;
@@ -799,14 +867,13 @@ async function switchCamera() {
   }
 
 
-  const nextDevice =
-    videoDevices[
-      currentCameraIndex
-    ];
-
 
   await startCamera(
-    nextDevice.deviceId
+
+    videoDevices[
+      currentCameraIndex
+    ].deviceId
+
   );
 
 }
@@ -815,45 +882,25 @@ async function switchCamera() {
 
 /**
  * ==========================================================
- * RESET VERIFICATION
+ * ZOOM CAPABILITIES
  * ==========================================================
  */
 
-function resetVerification() {
-
-  macVerification = {
-
-    mode:
-      'none',
-
-    confirmed:
-      false,
-
-    confidence:
-      '',
-
-    details:
-      '',
-
-    mac:
-      ''
-
-  };
-
-}
+function configureZoom(
+  track
+) {
 
 
+  const slider =
 
-/**
- * ==========================================================
- * MAIN SCAN
- * ==========================================================
- */
+    document.getElementById(
+      'zoomSlider'
+    );
 
-async function scanMac() {
 
   if (
-    ocrBusy
+    !slider ||
+    !track
   ) {
 
     return;
@@ -861,7 +908,280 @@ async function scanMac() {
   }
 
 
+  try {
+
+
+    const capabilities =
+
+      track.getCapabilities
+        ? track.getCapabilities()
+        : {};
+
+
+
+    if (
+      capabilities.zoom
+    ) {
+
+
+      slider.min =
+        capabilities.zoom.min;
+
+
+      slider.max =
+        capabilities.zoom.max;
+
+
+      slider.step =
+        capabilities.zoom.step ||
+        0.1;
+
+
+
+      const settings =
+        track.getSettings();
+
+
+
+      const current =
+
+        settings.zoom ||
+        capabilities.zoom.min;
+
+
+
+      slider.value =
+        current;
+
+
+      document
+
+        .getElementById(
+          'zoomValue'
+        )
+
+        .textContent =
+
+        Number(
+          current
+        ).toFixed(
+          1
+        ) +
+        '×';
+
+
+      slider.disabled =
+        false;
+
+
+    } else {
+
+
+      /*
+       * Browser does not expose hardware zoom.
+       *
+       * We still retain the UI but use
+       * CSS digital zoom for preview.
+       */
+
+      slider.min =
+        1;
+
+
+      slider.max =
+        3;
+
+
+      slider.step =
+        0.1;
+
+
+      slider.value =
+        1;
+
+
+      slider.disabled =
+        false;
+
+
+    }
+
+
+  } catch (
+    error
+  ) {
+
+
+    console.warn(
+      'Zoom capability error:',
+      error
+    );
+
+
+  }
+
+}
+
+
+
+/**
+ * ==========================================================
+ * CHANGE ZOOM
+ * ==========================================================
+ */
+
+async function changeZoom() {
+
+
+  const slider =
+
+    document.getElementById(
+      'zoomSlider'
+    );
+
+
   const video =
+
+    document.getElementById(
+      'camera'
+    );
+
+
+  const zoom =
+
+    Number(
+      slider.value
+    );
+
+
+  document
+
+    .getElementById(
+      'zoomValue'
+    )
+
+    .textContent =
+
+    zoom.toFixed(
+      1
+    ) +
+    '×';
+
+
+
+  if (
+    !cameraStream
+  ) {
+
+
+    video.style.transform =
+
+      'scale(' +
+      zoom +
+      ')';
+
+
+    return;
+
+  }
+
+
+
+  const track =
+
+    cameraStream
+      .getVideoTracks()[0];
+
+
+  try {
+
+
+    const capabilities =
+
+      track.getCapabilities
+        ? track.getCapabilities()
+        : {};
+
+
+
+    if (
+      capabilities.zoom
+    ) {
+
+
+      await track.applyConstraints({
+
+        advanced: [
+
+          {
+            zoom:
+              zoom
+          }
+
+        ]
+
+      });
+
+
+      video.style.transform =
+        'scale(1)';
+
+
+    } else {
+
+
+      /*
+       * Digital preview zoom.
+       */
+
+      video.style.transform =
+
+        'scale(' +
+        zoom +
+        ')';
+
+
+    }
+
+
+  } catch (
+    error
+  ) {
+
+
+    console.warn(
+
+      'Hardware zoom unavailable.',
+
+      error
+
+    );
+
+
+    video.style.transform =
+
+      'scale(' +
+      zoom +
+      ')';
+
+
+  }
+
+}
+
+
+
+/**
+ * ==========================================================
+ * GUIDED CAPTURE
+ * ==========================================================
+ */
+
+function captureGuidedImage() {
+
+
+  const video =
+
     document.getElementById(
       'camera'
     );
@@ -869,184 +1189,50 @@ async function scanMac() {
 
   if (
 
-    !video ||
-
     !video.videoWidth ||
 
     !video.videoHeight
 
   ) {
 
+
     showMessage(
+
       'Camera is not ready.',
+
       'warning'
+
     );
+
 
     return;
 
   }
 
 
-  resetVerification();
-
-
-  ocrBusy =
-    true;
-
-
-  const scanBtn =
-    document.getElementById(
-      'scanBtn'
-    );
-
-
-  scanBtn.disabled =
-    true;
-
-
-  try {
-
-    setOCRStatus(
-
-      true,
-
-      'Stabilizing camera...',
-
-      'Keep the MAC address inside the green area'
-
-    );
-
-
-    await sleep(
-      INITIAL_STABILIZE_MS
-    );
-
-
-    const frames =
-      [];
-
-
-    for (
-
-      let i = 0;
-
-      i <
-      CAMERA_CAPTURE_COUNT;
-
-      i++
-
-    ) {
-
-      setOCRStatus(
-
-        true,
-
-        'Capturing...',
-
-        'Frame ' +
-        (i + 1) +
-        ' of ' +
-        CAMERA_CAPTURE_COUNT
-
-      );
-
-
-      frames.push(
-
-        captureVideoFrame(
-          video
-        )
-
-      );
-
-
-      if (
-
-        i <
-        CAMERA_CAPTURE_COUNT - 1
-
-      ) {
-
-        await sleep(
-          CAPTURE_INTERVAL_MS
-        );
-
-      }
-
-    }
-
-
-    await processBalancedOCR(
-      frames
-    );
-
-
-  } catch (
-    error
-  ) {
-
-    console.error(
-      'Scan error:',
-      error
-    );
-
-
-    rejectScan(
-      'Scan failed: ' +
-      error.message
-    );
-
-
-  } finally {
-
-    ocrBusy =
-      false;
-
-
-    if (
-      cameraStream
-    ) {
-
-      scanBtn.disabled =
-        false;
-
-    }
-
-  }
-
-}
-
-
-
-/**
- * ==========================================================
- * CAPTURE FRAME
- *
- * V1.1.4 uses a larger area than V1.1.3.
- * ==========================================================
- */
-
-function captureVideoFrame(
-  video
-) {
 
   const canvas =
-    document.createElement(
-      'canvas'
+
+    document.getElementById(
+      'captureCanvas'
     );
 
 
   const ctx =
+
     canvas.getContext(
 
       '2d',
 
       {
+
         willReadFrequently:
           true
+
       }
 
     );
+
 
 
   const sourceWidth =
@@ -1057,56 +1243,75 @@ function captureVideoFrame(
     video.videoHeight;
 
 
+
   const cropWidth =
+
     Math.floor(
+
       sourceWidth *
-      0.92
+      GUIDE_WIDTH_RATIO
+
     );
+
 
 
   const cropHeight =
+
     Math.floor(
+
       sourceHeight *
-      0.58
+      GUIDE_HEIGHT_RATIO
+
     );
 
 
+
   const startX =
+
     Math.floor(
+
       (
         sourceWidth -
         cropWidth
       ) / 2
+
     );
 
 
+
   const startY =
+
     Math.floor(
+
       (
         sourceHeight -
         cropHeight
       ) / 2
+
     );
 
 
-  /*
-   * Moderate enlargement.
-   *
-   * 1.5x is faster than 2x on iPhone.
-   */
 
   canvas.width =
+
     Math.round(
+
       cropWidth *
-      1.5
+      OCR_SCALE
+
     );
+
 
 
   canvas.height =
+
     Math.round(
+
       cropHeight *
-      1.5
+      OCR_SCALE
+
     );
+
 
 
   ctx.imageSmoothingEnabled =
@@ -1117,26 +1322,140 @@ function captureVideoFrame(
     'high';
 
 
+
   ctx.drawImage(
 
     video,
 
     startX,
+
     startY,
 
     cropWidth,
+
     cropHeight,
 
     0,
+
     0,
 
     canvas.width,
+
     canvas.height
 
   );
 
 
-  return canvas;
+
+  capturedImageReady =
+    true;
+
+
+
+  currentDetectedMac =
+    null;
+
+
+  macConfirmed =
+    false;
+
+
+  manualEdit =
+    false;
+
+
+
+  document
+
+    .getElementById(
+      'capturedSection'
+    )
+
+    .classList
+
+    .remove(
+      'hidden'
+    );
+
+
+
+  document
+
+    .getElementById(
+      'confirmPanel'
+    )
+
+    .classList
+
+    .add(
+      'hidden'
+    );
+
+
+
+  document
+
+    .getElementById(
+      'macInput'
+    )
+
+    .value =
+    '';
+
+
+
+  document
+
+    .getElementById(
+      'saveBtn'
+    )
+
+    .disabled =
+    true;
+
+
+
+  setMacState(
+
+    'waiting',
+
+    'Captured image ready'
+
+  );
+
+
+
+  document
+
+    .getElementById(
+      'macValidation'
+    )
+
+    .textContent =
+
+    'Review the captured image, then press READ MAC.';
+
+
+
+  document
+
+    .getElementById(
+      'capturedSection'
+    )
+
+    .scrollIntoView({
+
+      behavior:
+        'smooth',
+
+      block:
+        'start'
+
+    });
+
+
+
+  vibrateShort();
 
 }
 
@@ -1144,46 +1463,448 @@ function captureVideoFrame(
 
 /**
  * ==========================================================
- * BALANCED OCR ENGINE
+ * RETAKE
  * ==========================================================
  */
 
-async function processBalancedOCR(
-  frames
+function retakePhoto() {
+
+
+  capturedImageReady =
+    false;
+
+
+  currentDetectedMac =
+    null;
+
+
+  macConfirmed =
+    false;
+
+
+  manualEdit =
+    false;
+
+
+
+  document
+
+    .getElementById(
+      'capturedSection'
+    )
+
+    .classList
+
+    .add(
+      'hidden'
+    );
+
+
+
+  document
+
+    .getElementById(
+      'macInput'
+    )
+
+    .value =
+    '';
+
+
+
+  document
+
+    .getElementById(
+      'confirmPanel'
+    )
+
+    .classList
+
+    .add(
+      'hidden'
+    );
+
+
+
+  document
+
+    .getElementById(
+      'saveBtn'
+    )
+
+    .disabled =
+    true;
+
+
+
+  setMacState(
+
+    'waiting',
+
+    'Waiting for capture'
+
+  );
+
+
+
+  document
+
+    .getElementById(
+      'macValidation'
+    )
+
+    .textContent =
+    '';
+
+
+
+  window.scrollTo({
+
+    top:
+      0,
+
+    behavior:
+      'smooth'
+
+  });
+
+}
+
+
+
+/**
+ * ==========================================================
+ * PHOTO / IMAGE INPUT
+ * ==========================================================
+ */
+
+function scanUploadedPhoto(
+  event
 ) {
 
-  const worker =
-    await getOCRWorker();
+
+  const file =
+
+    event
+      .target
+      .files[0];
 
 
-  const readings =
-    [];
-
-
-  let operationNumber =
-    0;
-
-
-  const totalOperations =
-    frames.length *
-    OCR_VARIANTS_PER_FRAME;
-
-
-  for (
-
-    let frameIndex = 0;
-
-    frameIndex <
-    frames.length;
-
-    frameIndex++
-
+  if (
+    !file
   ) {
 
-    const frame =
-      frames[
-        frameIndex
-      ];
+    return;
+
+  }
+
+
+
+  const reader =
+    new FileReader();
+
+
+
+  reader.onload =
+
+    function (
+      e
+    ) {
+
+
+      const img =
+        new Image();
+
+
+
+      img.onload =
+
+        function () {
+
+
+          const canvas =
+
+            document.getElementById(
+              'captureCanvas'
+            );
+
+
+
+          const ctx =
+
+            canvas.getContext(
+
+              '2d',
+
+              {
+
+                willReadFrequently:
+                  true
+
+              }
+
+            );
+
+
+
+          const maxWidth =
+            2400;
+
+
+
+          let width =
+            img.width;
+
+
+          let height =
+            img.height;
+
+
+
+          if (
+            width >
+            maxWidth
+          ) {
+
+
+            const ratio =
+
+              maxWidth /
+              width;
+
+
+
+            width =
+              maxWidth;
+
+
+
+            height =
+
+              Math.round(
+
+                height *
+                ratio
+
+              );
+
+
+          }
+
+
+
+          canvas.width =
+            width;
+
+
+          canvas.height =
+            height;
+
+
+
+          ctx.drawImage(
+
+            img,
+
+            0,
+
+            0,
+
+            width,
+
+            height
+
+          );
+
+
+
+          capturedImageReady =
+            true;
+
+
+
+          currentDetectedMac =
+            null;
+
+
+          macConfirmed =
+            false;
+
+
+          manualEdit =
+            false;
+
+
+
+          document
+
+            .getElementById(
+              'capturedSection'
+            )
+
+            .classList
+
+            .remove(
+              'hidden'
+            );
+
+
+
+          document
+
+            .getElementById(
+              'macInput'
+            )
+
+            .value =
+            '';
+
+
+
+          setMacState(
+
+            'waiting',
+
+            'Photo ready'
+
+          );
+
+
+
+          document
+
+            .getElementById(
+              'macValidation'
+            )
+
+            .textContent =
+
+            'Review the image, then press READ MAC.';
+
+
+
+          document
+
+            .getElementById(
+              'capturedSection'
+            )
+
+            .scrollIntoView({
+
+              behavior:
+                'smooth',
+
+              block:
+                'start'
+
+            });
+
+
+        };
+
+
+
+      img.src =
+        e.target.result;
+
+
+    };
+
+
+
+  reader.readAsDataURL(
+    file
+  );
+
+}
+
+
+
+/**
+ * ==========================================================
+ * OCR ENTRY
+ * ==========================================================
+ */
+
+async function readCapturedMac() {
+
+
+  if (
+    !capturedImageReady
+  ) {
+
+
+    showMessage(
+
+      'Capture an image first.',
+
+      'warning'
+
+    );
+
+
+    return;
+
+  }
+
+
+
+  if (
+    ocrBusy
+  ) {
+
+
+    return;
+
+  }
+
+
+
+  ocrBusy =
+    true;
+
+
+
+  currentDetectedMac =
+    null;
+
+
+  macConfirmed =
+    false;
+
+
+  manualEdit =
+    false;
+
+
+
+  const readButton =
+
+    document.getElementById(
+      'readMacBtn'
+    );
+
+
+
+  readButton.disabled =
+    true;
+
+
+
+  try {
+
+
+    const sourceCanvas =
+
+      document.getElementById(
+        'captureCanvas'
+      );
+
+
+
+    const worker =
+      await getOCRWorker();
+
 
 
     const variants = [
@@ -1194,7 +1915,7 @@ async function processBalancedOCR(
 
         canvas:
           cloneCanvas(
-            frame
+            sourceCanvas
           )
       },
 
@@ -1204,656 +1925,352 @@ async function processBalancedOCR(
 
         canvas:
           createContrastCanvas(
-            frame
+            sourceCanvas
+          )
+      },
+
+      {
+        name:
+          'Sharp',
+
+        canvas:
+          createSharpCanvas(
+            sourceCanvas
           )
       }
 
     ];
 
 
+
+    const candidates =
+      [];
+
+
+
     for (
 
-      let variantIndex = 0;
+      let i = 0;
 
-      variantIndex <
+      i <
       variants.length;
 
-      variantIndex++
+      i++
 
     ) {
-
-      operationNumber++;
-
-
-      const variant =
-        variants[
-          variantIndex
-        ];
 
 
       setOCRStatus(
 
         true,
 
-        'Reading MAC Address...',
+        'Reading captured image...',
 
-        'OCR ' +
-        operationNumber +
-        ' of ' +
-        totalOperations
+        variants[i].name +
+        ' • ' +
+        (i + 1) +
+        '/' +
+        variants.length
 
       );
 
 
+
       try {
 
+
         const result =
+
           await recognizeWithTimeout(
 
             worker,
 
-            variant.canvas
+            variants[i].canvas
 
           );
 
 
+
         const text =
+
           result &&
           result.data
+
             ? result.data.text || ''
+
             : '';
 
 
+
         console.log(
-          'OCR frame',
-          frameIndex + 1,
-          variant.name,
+
+          'OCR ' +
+          variants[i].name +
+          ':',
+
           text
+
         );
 
 
-        const candidates =
+
+        const detected =
+
           extractMacCandidates(
             text
           );
 
 
-        candidates.forEach(
+
+        detected.forEach(
 
           function (
             candidate
           ) {
 
-            readings.push({
+
+            candidates.push({
 
               mac:
                 candidate.mac,
 
-              quality:
-                candidate.quality,
+              score:
+                candidate.score,
 
-              source:
-                variant.name,
-
-              frame:
-                frameIndex + 1
+              variant:
+                variants[i].name
 
             });
+
 
           }
 
         );
 
 
-        /*
-         * Early exit:
-         *
-         * if one exact MAC already appears
-         * three times, there is no need to continue.
-         */
-
-        const earlyWinner =
-          findExactWinner(
-            readings,
-            3
-          );
-
-
-        if (
-          earlyWinner
-        ) {
-
-          console.log(
-            'Early OCR consensus:',
-            earlyWinner
-          );
-
-
-          acceptVerifiedMac(
-
-            earlyWinner,
-
-            'HIGH',
-
-            readings.length,
-
-            3
-
-          );
-
-
-          return;
-
-        }
-
-
       } catch (
         error
       ) {
 
+
         console.warn(
-          'OCR operation failed:',
+
+          'OCR pass failed:',
+
           error
-        );
-
-      }
-
-    }
-
-  }
-
-
-  evaluateReadings(
-    readings
-  );
-
-}
-
-
-
-/**
- * ==========================================================
- * OCR TIMEOUT
- * ==========================================================
- */
-
-async function recognizeWithTimeout(
-  worker,
-  image
-) {
-
-  return Promise.race([
-
-    worker.recognize(
-      image
-    ),
-
-    new Promise(
-
-      function (
-        resolve,
-        reject
-      ) {
-
-        setTimeout(
-
-          function () {
-
-            reject(
-              new Error(
-                'OCR timeout'
-              )
-            );
-
-          },
-
-          OCR_TIMEOUT_MS
 
         );
 
-      }
-
-    )
-
-  ]);
-
-}
-
-
-
-/**
- * ==========================================================
- * FIND EARLY EXACT WINNER
- * ==========================================================
- */
-
-function findExactWinner(
-  readings,
-  requiredCount
-) {
-
-  const counts =
-    {};
-
-
-  readings.forEach(
-
-    function (
-      reading
-    ) {
-
-      counts[
-        reading.mac
-      ] =
-        (
-          counts[
-            reading.mac
-          ] ||
-          0
-        ) + 1;
-
-    }
-
-  );
-
-
-  let winner =
-    null;
-
-
-  Object.keys(
-    counts
-  ).forEach(
-
-    function (
-      mac
-    ) {
-
-      if (
-        counts[
-          mac
-        ] >=
-        requiredCount
-      ) {
-
-        winner =
-          mac;
 
       }
 
+
     }
 
-  );
 
 
-  return winner;
+    const winner =
 
-}
-
-
-
-/**
- * ==========================================================
- * FINAL OCR CONSENSUS
- * ==========================================================
- */
-
-function evaluateReadings(
-  readings
-) {
-
-  console.log(
-    'MAC readings:',
-    readings
-  );
+      selectBestCandidate(
+        candidates
+      );
 
 
-  if (
-    readings.length <
-    MIN_VALID_READINGS
-  ) {
 
-    rejectScan(
-      'Not enough reliable MAC readings were found.'
+    if (
+      !winner
+    ) {
+
+
+      currentDetectedMac =
+        null;
+
+
+
+      setMacState(
+
+        'invalid',
+
+        'MAC NOT DETECTED'
+
+      );
+
+
+
+      document
+
+        .getElementById(
+          'macValidation'
+        )
+
+        .textContent =
+
+        'OCR could not read a reliable MAC. Retake closer or enter it manually.';
+
+
+
+      document
+
+        .getElementById(
+          'confirmPanel'
+        )
+
+        .classList
+
+        .add(
+          'hidden'
+        );
+
+
+
+      showMessage(
+
+        'MAC not detected. Retake the image closer and make sure only the MAC line is inside the guide.',
+
+        'warning'
+
+      );
+
+
+
+      return;
+
+    }
+
+
+
+    currentDetectedMac =
+      winner.mac;
+
+
+
+    const input =
+
+      document.getElementById(
+        'macInput'
+      );
+
+
+
+    input.value =
+      winner.mac;
+
+
+
+    setMacState(
+
+      'candidate',
+
+      'OCR CANDIDATE'
+
     );
 
-    return;
-
-  }
 
 
-  /*
-   * First try exact full-MAC voting.
-   */
+    document
 
-  const counts =
-    {};
-
-
-  readings.forEach(
-
-    function (
-      reading
-    ) {
-
-      counts[
-        reading.mac
-      ] =
-        (
-          counts[
-            reading.mac
-          ] ||
-          0
-        ) + 1;
-
-    }
-
-  );
-
-
-  let exactWinner =
-    null;
-
-
-  let exactWinnerCount =
-    0;
-
-
-  Object.keys(
-    counts
-  ).forEach(
-
-    function (
-      mac
-    ) {
-
-      if (
-        counts[
-          mac
-        ] >
-        exactWinnerCount
-      ) {
-
-        exactWinner =
-          mac;
-
-
-        exactWinnerCount =
-          counts[
-            mac
-          ];
-
-      }
-
-    }
-
-  );
-
-
-  /*
-   * Two identical independent OCR readings
-   * are enough if no competing result has
-   * the same number of votes.
-   */
-
-  if (
-    exactWinner &&
-    exactWinnerCount >= 2
-  ) {
-
-    const tied =
-      Object.keys(
-        counts
+      .getElementById(
+        'macValidation'
       )
-      .filter(
 
-        function (
-          mac
-        ) {
+      .textContent =
 
-          return (
-            mac !==
-            exactWinner &&
-            counts[mac] ===
-            exactWinnerCount
-          );
+      'OCR candidate detected. Compare it carefully with the captured image.';
 
-        }
 
+
+    document
+
+      .getElementById(
+        'confirmPanel'
+      )
+
+      .classList
+
+      .remove(
+        'hidden'
       );
 
 
-    if (
-      tied.length ===
-      0
-    ) {
 
-      acceptVerifiedMac(
+    document
 
-        exactWinner,
+      .getElementById(
+        'saveBtn'
+      )
 
-        exactWinnerCount >= 3
-          ? 'HIGH'
-          : 'GOOD',
-
-        readings.length,
-
-        exactWinnerCount
-
-      );
+      .disabled =
+      true;
 
 
-      return;
 
-    }
+    showMessage(
 
-  }
+      'OCR detected: ' +
+      winner.mac +
+      '. Please visually confirm it.',
 
-
-  /*
-   * Character-level consensus.
-   */
-
-  const compactReadings =
-    readings.map(
-
-      function (
-        reading
-      ) {
-
-        return reading.mac
-          .replace(
-            /:/g,
-            ''
-          );
-
-      }
+      'warning'
 
     );
 
 
-  const output =
-    [];
+
+    document
+
+      .getElementById(
+        'macInput'
+      )
+
+      .scrollIntoView({
+
+        behavior:
+          'smooth',
+
+        block:
+          'center'
+
+      });
 
 
-  let weakestRatio =
-    1;
-
-
-  for (
-
-    let position = 0;
-
-    position < 12;
-
-    position++
-
+  } catch (
+    error
   ) {
 
-    const frequency =
-      {};
+
+    console.error(
+      error
+    );
 
 
-    compactReadings.forEach(
 
-      function (
-        value
-      ) {
+    showMessage(
 
-        const char =
-          value[
-            position
-          ];
+      'OCR error: ' +
+      error.message,
 
-
-        frequency[
-          char
-        ] =
-          (
-            frequency[
-              char
-            ] ||
-            0
-          ) + 1;
-
-      }
+      'error'
 
     );
 
 
-    let bestChar =
-      null;
+  } finally {
 
 
-    let bestCount =
-      0;
-
-
-    Object.keys(
-      frequency
-    ).forEach(
-
-      function (
-        char
-      ) {
-
-        if (
-          frequency[
-            char
-          ] >
-          bestCount
-        ) {
-
-          bestChar =
-            char;
-
-
-          bestCount =
-            frequency[
-              char
-            ];
-
-        }
-
-      }
-
+    setOCRStatus(
+      false
     );
 
 
-    const ratio =
-      bestCount /
-      compactReadings.length;
+    ocrBusy =
+      false;
 
 
-    weakestRatio =
-      Math.min(
-        weakestRatio,
-        ratio
-      );
+    readButton.disabled =
+      false;
 
-
-    if (
-      ratio <
-      CHARACTER_CONSENSUS_RATIO
-    ) {
-
-      rejectScan(
-        'OCR readings disagree on one or more MAC characters.'
-      );
-
-      return;
-
-    }
-
-
-    output.push(
-      bestChar
-    );
 
   }
-
-
-  const finalCompact =
-    output.join(
-      ''
-    );
-
-
-  const finalMac =
-    formatMac(
-      finalCompact
-    );
-
-
-  /*
-   * Character reconstruction is accepted only
-   * if at least one full OCR result also matches it.
-   */
-
-  const exactSupport =
-    compactReadings.filter(
-
-      function (
-        value
-      ) {
-
-        return (
-          value ===
-          finalCompact
-        );
-
-      }
-
-    ).length;
-
-
-  if (
-    exactSupport <
-    1
-  ) {
-
-    rejectScan(
-      'Character consensus exists but no complete OCR reading confirms it.'
-    );
-
-    return;
-
-  }
-
-
-  acceptVerifiedMac(
-
-    finalMac,
-
-    weakestRatio >= 0.85
-      ? 'HIGH'
-      : 'GOOD',
-
-    readings.length,
-
-    exactSupport
-
-  );
 
 }
 
@@ -1861,84 +2278,132 @@ function evaluateReadings(
 
 /**
  * ==========================================================
- * ACCEPT MAC
+ * USER CONFIRMATION
  * ==========================================================
  */
 
-function acceptVerifiedMac(
-
-  mac,
-
-  confidence,
-
-  readingCount,
-
-  exactMatches
-
-) {
-
-  if (
-    !isPlausibleMac(
-      mac
-    )
-  ) {
-
-    rejectScan(
-      'The detected value failed MAC validation.'
-    );
-
-    return;
-
-  }
+function confirmDetectedMac() {
 
 
   const input =
+
     document.getElementById(
       'macInput'
     );
+
+
+
+  const mac =
+
+    normalizeMac(
+      input.value
+    );
+
+
+
+  if (
+    !mac
+  ) {
+
+
+    showMessage(
+
+      'The MAC Address is not valid.',
+
+      'error'
+
+    );
+
+
+    return;
+
+  }
+
+
+
+  currentDetectedMac =
+    mac;
+
+
+  macConfirmed =
+    true;
+
+
+  manualEdit =
+    false;
+
 
 
   input.value =
     mac;
 
 
-  macVerification = {
 
-    mode:
-      'ocr',
+  setMacState(
 
-    confirmed:
-      true,
+    'valid',
 
-    confidence:
-      confidence,
+    'VISUALLY VERIFIED'
 
-    details:
-      exactMatches +
-      ' exact match(es) from ' +
-      readingCount +
-      ' valid OCR readings',
-
-    mac:
-      mac
-
-  };
-
-
-  updateVerifiedMacUI();
-
-
-  setOCRStatus(
-    false
   );
+
+
+
+  document
+
+    .getElementById(
+      'macValidation'
+    )
+
+    .textContent =
+
+    'MAC confirmed by user • Ready to save.';
+
+
+
+  document
+
+    .getElementById(
+      'macValidation'
+    )
+
+    .style.color =
+    '#16864b';
+
+
+
+  document
+
+    .getElementById(
+      'confirmPanel'
+    )
+
+    .classList
+
+    .add(
+      'hidden'
+    );
+
+
+
+  document
+
+    .getElementById(
+      'saveBtn'
+    )
+
+    .disabled =
+    false;
+
 
 
   vibrateSuccess();
 
 
+
   showMessage(
 
-    'VERIFIED MAC: ' +
+    'MAC confirmed: ' +
     mac,
 
     'success'
@@ -1951,68 +2416,436 @@ function acceptVerifiedMac(
 
 /**
  * ==========================================================
- * REJECT OCR
+ * MANUAL INPUT
  * ==========================================================
  */
 
-function rejectScan(
-  reason
-) {
-
-  resetVerification();
+function handleMacInput() {
 
 
   const input =
+
     document.getElementById(
       'macInput'
     );
 
 
-  input.value =
-    '';
+
+  let raw =
+
+    input
+      .value
+      .toUpperCase()
+
+      .replace(
+
+        /[^0-9A-F]/g,
+
+        ''
+
+      );
 
 
-  document
-    .getElementById(
-      'saveBtn'
-    )
-    .disabled =
-    true;
 
+  raw =
 
-  setOCRStatus(
-    false
-  );
-
-
-  setMacState(
-    'invalid',
-    'OCR UNVERIFIED'
-  );
-
-
-  const validation =
-    document.getElementById(
-      'macValidation'
+    raw.substring(
+      0,
+      12
     );
 
 
-  validation.textContent =
-    reason;
+
+  const groups =
+    [];
 
 
-  validation.style.color =
-    '#d63b3b';
+
+  for (
+
+    let i = 0;
+
+    i < raw.length;
+
+    i += 2
+
+  ) {
 
 
-  showMessage(
+    groups.push(
 
-    reason +
-    ' Move closer to the MAC text and scan again.',
+      raw.substring(
 
-    'warning'
+        i,
+
+        i + 2
+
+      )
+
+    );
+
+
+  }
+
+
+
+  input.value =
+
+    groups.join(
+      ':'
+    );
+
+
+
+  /*
+   * If user edits OCR result,
+   * previous visual confirmation is invalidated.
+   */
+
+  macConfirmed =
+    false;
+
+
+  manualEdit =
+    true;
+
+
+
+  const mac =
+
+    normalizeMac(
+      input.value
+    );
+
+
+
+  if (
+    mac
+  ) {
+
+
+    input.value =
+      mac;
+
+
+
+    setMacState(
+
+      'candidate',
+
+      'MANUAL / EDITED MAC'
+
+    );
+
+
+
+    document
+
+      .getElementById(
+        'macValidation'
+      )
+
+      .textContent =
+
+      'Valid format. Verify it visually and press MAC IS CORRECT.';
+
+
+
+    document
+
+      .getElementById(
+        'macValidation'
+      )
+
+      .style.color =
+      '#84590b';
+
+
+
+    document
+
+      .getElementById(
+        'confirmPanel'
+      )
+
+      .classList
+
+      .remove(
+        'hidden'
+      );
+
+
+
+  } else {
+
+
+    document
+
+      .getElementById(
+        'confirmPanel'
+      )
+
+      .classList
+
+      .add(
+        'hidden'
+      );
+
+
+
+    document
+
+      .getElementById(
+        'saveBtn'
+      )
+
+      .disabled =
+      true;
+
+
+
+    if (
+      input.value
+    ) {
+
+
+      setMacState(
+
+        'invalid',
+
+        'INVALID FORMAT'
+
+      );
+
+
+
+      document
+
+        .getElementById(
+          'macValidation'
+        )
+
+        .textContent =
+
+        'Incomplete or invalid MAC Address.';
+
+
+    } else {
+
+
+      setMacState(
+
+        'waiting',
+
+        capturedImageReady
+          ? 'Waiting for OCR'
+          : 'Waiting for capture'
+
+      );
+
+
+
+      document
+
+        .getElementById(
+          'macValidation'
+        )
+
+        .textContent =
+        '';
+
+
+    }
+
+
+  }
+
+}
+
+
+
+/**
+ * ==========================================================
+ * OCR WORKER
+ * ==========================================================
+ */
+
+async function getOCRWorker() {
+
+
+  if (
+    ocrWorker
+  ) {
+
+
+    return ocrWorker;
+
+
+  }
+
+
+
+  setOCRStatus(
+
+    true,
+
+    'Loading OCR engine...',
+
+    'First use may take a few seconds.'
 
   );
+
+
+
+  ocrWorker =
+
+    await Tesseract
+      .createWorker(
+
+        'eng',
+
+        1,
+
+        {
+
+          logger:
+
+            function (
+              message
+            ) {
+
+
+              if (
+
+                message.status &&
+
+                message.progress !==
+                undefined
+
+              ) {
+
+
+                const percent =
+
+                  Math.round(
+
+                    message.progress *
+                    100
+
+                  );
+
+
+
+                if (
+                  percent > 0
+                ) {
+
+
+                  document
+
+                    .getElementById(
+                      'ocrProgress'
+                    )
+
+                    .textContent =
+
+                    message.status +
+                    ' ' +
+                    percent +
+                    '%';
+
+
+                }
+
+
+              }
+
+
+            }
+
+
+        }
+
+      );
+
+
+
+  await ocrWorker.setParameters({
+
+    preserve_interword_spaces:
+      '1',
+
+    tessedit_pageseg_mode:
+      '6'
+
+  });
+
+
+
+  return ocrWorker;
+
+}
+
+
+
+/**
+ * ==========================================================
+ * OCR TIMEOUT
+ * ==========================================================
+ */
+
+function recognizeWithTimeout(
+
+  worker,
+
+  image
+
+) {
+
+
+  return Promise.race([
+
+
+    worker.recognize(
+      image
+    ),
+
+
+    new Promise(
+
+      function (
+        resolve,
+        reject
+      ) {
+
+
+        setTimeout(
+
+          function () {
+
+
+            reject(
+
+              new Error(
+                'OCR timeout'
+              )
+
+            );
+
+
+          },
+
+          OCR_TIMEOUT_MS
+
+        );
+
+
+      }
+
+    )
+
+
+  ]);
 
 }
 
@@ -2021,21 +2854,6 @@ function rejectScan(
 /**
  * ==========================================================
  * MAC EXTRACTION
- *
- * This is the important V1.1.4 change.
- *
- * Accept:
- *
- * 48:EA:62:CB:B6:8B
- * 48-EA-62-CB-B6-8B
- * 48 EA 62 CB B6 8B
- * 48EA62CBB68B (only near MAC label)
- *
- * Also detects OCR-confused groups such as:
- *
- * 48:EA:62:CB:B6:8O
- *
- * and safely converts the last O to 0.
  * ==========================================================
  */
 
@@ -2043,423 +2861,123 @@ function extractMacCandidates(
   text
 ) {
 
+
   if (
     !text
   ) {
+
 
     return [];
 
   }
 
 
-  const upper =
+
+  const source =
+
     String(text)
-      .toUpperCase()
-      .replace(
-        /\r/g,
-        '\n'
-      );
+      .toUpperCase();
 
-
-  const lines =
-    upper.split(
-      '\n'
-    );
 
 
   const candidates =
     [];
 
 
-  lines.forEach(
 
-    function (
-      line,
-      lineIndex
-    ) {
-
-      const macContext =
-        isMacContextLine(
-          line
-        );
-
-
-      /*
-       * ------------------------------------------------------
-       * 1. Exact colon separated MAC
-       * ------------------------------------------------------
-       */
-
-      const exactColon =
-        line.match(
-          /(?:[0-9A-F]{2}:){5}[0-9A-F]{2}/g
-        );
-
-
-      if (
-        exactColon
-      ) {
-
-        exactColon.forEach(
-
-          function (
-            value
-          ) {
-
-            addCandidate(
-
-              candidates,
-
-              value,
-
-              100
-
-            );
-
-          }
-
-        );
-
-      }
-
-
-      /*
-       * ------------------------------------------------------
-       * 2. Exact dash separated MAC
-       * ------------------------------------------------------
-       */
-
-      const exactDash =
-        line.match(
-          /(?:[0-9A-F]{2}-){5}[0-9A-F]{2}/g
-        );
-
-
-      if (
-        exactDash
-      ) {
-
-        exactDash.forEach(
-
-          function (
-            value
-          ) {
-
-            addCandidate(
-
-              candidates,
-
-              value,
-
-              98
-
-            );
-
-          }
-
-        );
-
-      }
-
-
-      /*
-       * ------------------------------------------------------
-       * 3. Space separated MAC
-       * ------------------------------------------------------
-       */
-
-      const exactSpace =
-        line.match(
-          /(?:[0-9A-F]{2}\s+){5}[0-9A-F]{2}/g
-        );
-
-
-      if (
-        exactSpace
-      ) {
-
-        exactSpace.forEach(
-
-          function (
-            value
-          ) {
-
-            addCandidate(
-
-              candidates,
-
-              value,
-
-              95
-
-            );
-
-          }
-
-        );
-
-      }
-
-
-      /*
-       * ------------------------------------------------------
-       * 4. Cisco dotted MAC
-       * ------------------------------------------------------
-       */
-
-      const dotted =
-        line.match(
-          /\b[0-9A-F]{4}\.[0-9A-F]{4}\.[0-9A-F]{4}\b/g
-        );
-
-
-      if (
-        dotted
-      ) {
-
-        dotted.forEach(
-
-          function (
-            value
-          ) {
-
-            addCandidate(
-
-              candidates,
-
-              value,
-
-              95
-
-            );
-
-          }
-
-        );
-
-      }
-
-
-      /*
-       * ------------------------------------------------------
-       * 5. OCR tolerant separated pattern
-       *
-       * Each pair may contain OCR-confused letters.
-       *
-       * Example:
-       * 48:EA:62:CB:B6:8O
-       * ------------------------------------------------------
-       */
-
-      const tolerantMatches =
-        line.match(
-          /(?:[0-9A-Z]{2}[:\-]){5}[0-9A-Z]{2}/g
-        );
-
-
-      if (
-        tolerantMatches
-      ) {
-
-        tolerantMatches.forEach(
-
-          function (
-            raw
-          ) {
-
-            const corrected =
-              correctSeparatedMacOCR(
-                raw
-              );
-
-
-            if (
-              corrected
-            ) {
-
-              addCandidate(
-
-                candidates,
-
-                corrected,
-
-                80
-
-              );
-
-            }
-
-          }
-
-        );
-
-      }
-
-
-      /*
-       * ------------------------------------------------------
-       * 6. Compact form only in MAC context
-       * ------------------------------------------------------
-       */
-
-      if (
-        macContext
-      ) {
-
-        const compact =
-          line.match(
-            /\b[0-9A-F]{12}\b/g
-          );
-
-
-        if (
-          compact
-        ) {
-
-          compact.forEach(
-
-            function (
-              value
-            ) {
-
-              addCandidate(
-
-                candidates,
-
-                value,
-
-                85
-
-              );
-
-            }
-
-          );
-
-        }
-
-
-        /*
-         * Check next line if current line is a MAC label.
-         */
-
-        if (
-          lineIndex + 1 <
-          lines.length
-        ) {
-
-          const nextLine =
-            lines[
-              lineIndex + 1
-            ];
-
-
-          const nextCandidates =
-            extractMacFromLabelValueLine(
-              nextLine
-            );
-
-
-          nextCandidates.forEach(
-
-            function (
-              item
-            ) {
-
-              candidates.push(
-                item
-              );
-
-            }
-
-          );
-
-        }
-
-      }
-
-    }
-
-  );
-
-
-  /*
-   * Deduplicate candidates,
-   * keeping highest quality.
+  /**
+   * Exact colon format
    */
 
-  const best =
-    {};
+  addMatches(
 
+    candidates,
 
-  candidates.forEach(
+    source,
 
-    function (
-      item
-    ) {
+    /(?:[0-9A-F]{2}:){5}[0-9A-F]{2}/g,
 
-      if (
-
-        !best[
-          item.mac
-        ] ||
-
-        item.quality >
-        best[
-          item.mac
-        ].quality
-
-      ) {
-
-        best[
-          item.mac
-        ] =
-          item;
-
-      }
-
-    }
+    120
 
   );
 
 
-  return Object.values(
-    best
+
+  /**
+   * Dash format
+   */
+
+  addMatches(
+
+    candidates,
+
+    source,
+
+    /(?:[0-9A-F]{2}-){5}[0-9A-F]{2}/g,
+
+    115
+
   );
 
-}
+
+
+  /**
+   * Spaces
+   */
+
+  addMatches(
+
+    candidates,
+
+    source,
+
+    /(?:[0-9A-F]{2}\s+){5}[0-9A-F]{2}/g,
+
+    105
+
+  );
 
 
 
-/**
- * ==========================================================
- * VALUE LINE AFTER MAC LABEL
- * ==========================================================
- */
+  /**
+   * Cisco format
+   */
 
-function extractMacFromLabelValueLine(
-  line
-) {
+  addMatches(
 
-  const candidates =
-    [];
+    candidates,
+
+    source,
+
+    /\b[0-9A-F]{4}\.[0-9A-F]{4}\.[0-9A-F]{4}\b/g,
+
+    105
+
+  );
 
 
-  const upper =
-    String(
-      line
-    ).toUpperCase();
 
+  /**
+   * OCR tolerant colon/dash format.
+   *
+   * Example:
+   * 48:EA:62:CB:B6:8O
+   */
 
   const tolerant =
-    upper.match(
+
+    source.match(
+
       /(?:[0-9A-Z]{2}[:\-]){5}[0-9A-Z]{2}/g
+
     );
+
 
 
   if (
     tolerant
   ) {
+
 
     tolerant.forEach(
 
@@ -2467,78 +2985,114 @@ function extractMacFromLabelValueLine(
         raw
       ) {
 
+
         const corrected =
+
           correctSeparatedMacOCR(
             raw
           );
+
 
 
         if (
           corrected
         ) {
 
+
           candidates.push({
 
             mac:
               corrected,
 
-            quality:
+            score:
               90
 
           });
 
+
         }
+
 
       }
 
     );
 
+
   }
 
 
-  const compact =
-    upper.match(
-      /\b[0-9A-F]{12}\b/g
-    );
 
+  /**
+   * Compact MAC.
+   *
+   * Accepted only when OCR text contains
+   * a MAC-related keyword.
+   */
 
   if (
-    compact
+    containsMacKeyword(
+      source
+    )
   ) {
 
-    compact.forEach(
 
-      function (
-        value
-      ) {
+    const compact =
 
-        const mac =
-          normalizeMac(
-            value
-          );
+      source.match(
+        /\b[0-9A-F]{12}\b/g
+      );
 
 
-        if (
-          mac
+
+    if (
+      compact
+    ) {
+
+
+      compact.forEach(
+
+        function (
+          value
         ) {
 
-          candidates.push({
 
-            mac:
-              mac,
+          const mac =
 
-            quality:
-              88
+            normalizeMac(
+              value
+            );
 
-          });
+
+
+          if (
+            mac
+          ) {
+
+
+            candidates.push({
+
+              mac:
+                mac,
+
+              score:
+                85
+
+            });
+
+
+          }
+
 
         }
 
-      }
+      );
 
-    );
+
+    }
+
 
   }
+
 
 
   return candidates;
@@ -2549,55 +3103,80 @@ function extractMacFromLabelValueLine(
 
 /**
  * ==========================================================
- * ADD CANDIDATE
+ * ADD PATTERN MATCHES
  * ==========================================================
  */
 
-function addCandidate(
+function addMatches(
 
   list,
 
-  raw,
+  source,
 
-  quality
+  regex,
+
+  score
 
 ) {
 
-  const mac =
-    normalizeMac(
-      raw
+
+  const matches =
+
+    source.match(
+      regex
     );
 
 
+
   if (
-    !mac
+    !matches
   ) {
 
+
     return;
+
 
   }
 
 
-  if (
-    !isPlausibleMac(
-      mac
-    )
-  ) {
 
-    return;
+  matches.forEach(
 
-  }
+    function (
+      value
+    ) {
 
 
-  list.push({
+      const mac =
 
-    mac:
-      mac,
+        normalizeMac(
+          value
+        );
 
-    quality:
-      quality
 
-  });
+
+      if (
+        mac
+      ) {
+
+
+        list.push({
+
+          mac:
+            mac,
+
+          score:
+            score
+
+        });
+
+
+      }
+
+
+    }
+
+  );
 
 }
 
@@ -2605,10 +3184,10 @@ function addCandidate(
 
 /**
  * ==========================================================
- * OCR CORRECTION FOR SEPARATED MAC ONLY
+ * OCR CHARACTER CORRECTION
  *
- * Very important:
- * corrections are NOT applied to arbitrary text.
+ * Applied only to strings already shaped
+ * like a MAC with separators.
  * ==========================================================
  */
 
@@ -2616,12 +3195,17 @@ function correctSeparatedMacOCR(
   raw
 ) {
 
+
   const groups =
+
     String(raw)
+
       .toUpperCase()
+
       .split(
         /[:-]/
       );
+
 
 
   if (
@@ -2629,42 +3213,72 @@ function correctSeparatedMacOCR(
     6
   ) {
 
+
     return null;
+
 
   }
 
 
-  const correctedGroups =
+
+  const conversion = {
+
+    O:
+      '0',
+
+    Q:
+      '0',
+
+    I:
+      '1',
+
+    L:
+      '1',
+
+    S:
+      '5',
+
+    G:
+      '6'
+
+  };
+
+
+
+  const result =
     [];
 
 
+
   for (
-    let group
+    const group
     of groups
   ) {
+
 
     if (
       group.length !==
       2
     ) {
 
+
       return null;
+
 
     }
 
 
-    let corrected =
+
+    let converted =
       '';
 
 
+
     for (
-      let char
+      const char
       of group
     ) {
 
-      /*
-       * Already valid hexadecimal.
-       */
 
       if (
         /[0-9A-F]/
@@ -2673,76 +3287,52 @@ function correctSeparatedMacOCR(
           )
       ) {
 
-        corrected +=
+
+        converted +=
           char;
 
-        continue;
 
-      }
-
-
-      /*
-       * Conservative OCR correction.
-       */
-
-      const map = {
-
-        O:
-          '0',
-
-        Q:
-          '0',
-
-        I:
-          '1',
-
-        L:
-          '1',
-
-        S:
-          '5',
-
-        G:
-          '6'
-
-      };
-
-
-      if (
-        map[
+      } else if (
+        conversion[
           char
         ]
       ) {
 
-        corrected +=
-          map[
+
+        converted +=
+          conversion[
             char
           ];
 
+
       } else {
+
 
         return null;
 
+
       }
+
 
     }
 
 
-    correctedGroups.push(
-      corrected
+
+    result.push(
+      converted
     );
+
 
   }
 
 
-  const candidate =
-    correctedGroups.join(
-      ':'
-    );
-
 
   return normalizeMac(
-    candidate
+
+    result.join(
+      ':'
+    )
+
   );
 
 }
@@ -2751,26 +3341,20 @@ function correctSeparatedMacOCR(
 
 /**
  * ==========================================================
- * MAC CONTEXT
+ * KEYWORD CHECK
  * ==========================================================
  */
 
-function isMacContextLine(
-  line
+function containsMacKeyword(
+  text
 ) {
 
-  const value =
-    String(line)
-      .toUpperCase();
 
-
-  const labels = [
+  const keywords = [
 
     'MAC',
 
     'MAC ADDRESS',
-
-    'MACADDRESS',
 
     'PHYSICAL ADDRESS',
 
@@ -2778,26 +3362,27 @@ function isMacContextLine(
 
     'WIRELESS',
 
-    'WI-FI',
-
     'WIFI',
 
-    'ETHERNET',
+    'WI-FI',
 
-    'LAN'
+    'ETHERNET'
 
   ];
 
 
-  return labels.some(
+
+  return keywords.some(
 
     function (
-      label
+      keyword
     ) {
 
-      return value.includes(
-        label
+
+      return text.includes(
+        keyword
       );
+
 
     }
 
@@ -2809,58 +3394,179 @@ function isMacContextLine(
 
 /**
  * ==========================================================
- * MAC SANITY
+ * SELECT BEST OCR CANDIDATE
  * ==========================================================
  */
 
-function isPlausibleMac(
-  mac
+function selectBestCandidate(
+  candidates
 ) {
 
-  const compact =
-    String(mac)
-      .replace(
-        /:/g,
-        ''
-      )
-      .toUpperCase();
-
 
   if (
-    !/^[0-9A-F]{12}$/
-      .test(
-        compact
-      )
+
+    !candidates ||
+
+    candidates.length ===
+    0
+
   ) {
 
-    return false;
+
+    return null;
+
 
   }
 
 
-  const blocked = [
 
-    '000000000000',
+  const table =
+    {};
 
-    'FFFFFFFFFFFF',
 
-    '111111111111'
 
-  ];
+  candidates.forEach(
 
+    function (
+      item
+    ) {
+
+
+      if (
+        !table[
+          item.mac
+        ]
+      ) {
+
+
+        table[
+          item.mac
+        ] = {
+
+          mac:
+            item.mac,
+
+          votes:
+            0,
+
+          score:
+            0
+
+        };
+
+
+      }
+
+
+
+      table[
+        item.mac
+      ].votes++;
+
+
+
+      table[
+        item.mac
+      ].score +=
+        item.score;
+
+
+    }
+
+  );
+
+
+
+  const list =
+
+    Object.values(
+      table
+    );
+
+
+
+  list.sort(
+
+    function (
+      a,
+      b
+    ) {
+
+
+      if (
+        b.votes !==
+        a.votes
+      ) {
+
+
+        return (
+          b.votes -
+          a.votes
+        );
+
+
+      }
+
+
+
+      return (
+        b.score -
+        a.score
+      );
+
+
+    }
+
+  );
+
+
+
+  const winner =
+    list[0];
+
+
+
+  /**
+   * Safety:
+   *
+   * If two different MACs have equal vote count
+   * and very similar scores, do not guess.
+   */
 
   if (
-    blocked.includes(
-      compact
-    )
+    list.length > 1
   ) {
 
-    return false;
+
+    const second =
+      list[1];
+
+
+
+    if (
+
+      winner.votes ===
+      second.votes &&
+
+      Math.abs(
+        winner.score -
+        second.score
+      ) < 15
+
+    ) {
+
+
+      return null;
+
+
+    }
+
 
   }
 
 
-  return true;
+
+  return winner;
 
 }
 
@@ -2876,10 +3582,13 @@ function cloneCanvas(
   source
 ) {
 
+
   const canvas =
+
     document.createElement(
       'canvas'
     );
+
 
 
   canvas.width =
@@ -2890,24 +3599,34 @@ function cloneCanvas(
     source.height;
 
 
+
   const ctx =
+
     canvas.getContext(
 
       '2d',
 
       {
+
         willReadFrequently:
           true
+
       }
 
     );
 
 
+
   ctx.drawImage(
+
     source,
+
     0,
+
     0
+
   );
+
 
 
   return canvas;
@@ -2918,7 +3637,7 @@ function cloneCanvas(
 
 /**
  * ==========================================================
- * HIGH CONTRAST
+ * CONTRAST
  * ==========================================================
  */
 
@@ -2926,43 +3645,56 @@ function createContrastCanvas(
   source
 ) {
 
+
   const canvas =
+
     cloneCanvas(
       source
     );
 
 
+
   const ctx =
+
     canvas.getContext(
 
       '2d',
 
       {
+
         willReadFrequently:
           true
+
       }
 
     );
 
 
+
   const imageData =
+
     ctx.getImageData(
 
       0,
+
       0,
 
       canvas.width,
+
       canvas.height
 
     );
+
 
 
   const data =
     imageData.data;
 
 
+
   const contrast =
     1.45;
+
 
 
   for (
@@ -2975,20 +3707,22 @@ function createContrastCanvas(
 
   ) {
 
+
     const gray =
 
       data[i] *
-      0.299
+      .299
 
       +
 
       data[i + 1] *
-      0.587
+      .587
 
       +
 
       data[i + 2] *
-      0.114;
+      .114;
+
 
 
     let value =
@@ -3007,20 +3741,20 @@ function createContrastCanvas(
       128;
 
 
+
     value =
+
       Math.max(
 
         0,
 
         Math.min(
-
           255,
-
           value
-
         )
 
       );
+
 
 
     data[i] =
@@ -3034,7 +3768,9 @@ function createContrastCanvas(
     data[i + 2] =
       value;
 
+
   }
+
 
 
   ctx.putImageData(
@@ -3042,9 +3778,11 @@ function createContrastCanvas(
     imageData,
 
     0,
+
     0
 
   );
+
 
 
   return canvas;
@@ -3055,349 +3793,73 @@ function createContrastCanvas(
 
 /**
  * ==========================================================
- * OCR WORKER
+ * SHARPEN
  * ==========================================================
  */
 
-async function getOCRWorker() {
-
-  if (
-    ocrWorker
-  ) {
-
-    return ocrWorker;
-
-  }
-
-
-  setOCRStatus(
-
-    true,
-
-    'Loading OCR engine...',
-
-    'First scan may take a few seconds.'
-
-  );
-
-
-  ocrWorker =
-    await Tesseract
-      .createWorker(
-
-        'eng',
-
-        1,
-
-        {
-
-          logger:
-
-            function (
-              message
-            ) {
-
-              /*
-               * Do not overwrite our own
-               * scan progress constantly.
-               */
-
-              if (
-                message.status ===
-                'loading tesseract core'
-              ) {
-
-                setOCRStatus(
-
-                  true,
-
-                  'Loading OCR engine...',
-
-                  'Preparing scanner'
-
-                );
-
-              }
-
-            }
-
-        }
-
-      );
-
-
-  /*
-   * More permissive than V1.1.3.
-   */
-
-  await ocrWorker.setParameters({
-
-    preserve_interword_spaces:
-      '1'
-
-  });
-
-
-  return ocrWorker;
-
-}
-
-
-
-/**
- * ==========================================================
- * PHOTO / IMAGE
- * ==========================================================
- */
-
-function scanUploadedPhoto(
-  event
+function createSharpCanvas(
+  source
 ) {
 
-  const file =
-    event
-      .target
-      .files[0];
 
+  const canvas =
 
-  if (
-    !file
-  ) {
+    cloneCanvas(
+      source
+    );
 
-    return;
 
-  }
 
+  const ctx =
 
-  const reader =
-    new FileReader();
+    canvas.getContext(
 
+      '2d',
 
-  reader.onload =
+      {
 
-    function (
-      e
-    ) {
+        willReadFrequently:
+          true
 
-      const img =
-        new Image();
+      }
 
+    );
 
-      img.onload =
 
-        async function () {
 
-          if (
-            ocrBusy
-          ) {
+  /**
+   * Browser-safe lightweight sharpening:
+   * draw enlarged image over itself
+   * with contrast filter.
+   */
 
-            return;
+  ctx.filter =
+    'contrast(145%) brightness(105%)';
 
-          }
 
 
-          ocrBusy =
-            true;
+  ctx.drawImage(
 
+    source,
 
-          resetVerification();
+    0,
 
+    0,
 
-          try {
+    canvas.width,
 
-            const canvas =
-              document.createElement(
-                'canvas'
-              );
+    canvas.height
 
-
-            const ctx =
-              canvas.getContext(
-
-                '2d',
-
-                {
-                  willReadFrequently:
-                    true
-                }
-
-              );
-
-
-            const maxWidth =
-              2200;
-
-
-            let width =
-              img.width;
-
-
-            let height =
-              img.height;
-
-
-            if (
-              width >
-              maxWidth
-            ) {
-
-              const ratio =
-                maxWidth /
-                width;
-
-
-              width =
-                maxWidth;
-
-
-              height =
-                Math.round(
-                  height *
-                  ratio
-                );
-
-            }
-
-
-            canvas.width =
-              width;
-
-
-            canvas.height =
-              height;
-
-
-            ctx.drawImage(
-
-              img,
-
-              0,
-              0,
-
-              width,
-              height
-
-            );
-
-
-            const worker =
-              await getOCRWorker();
-
-
-            const variants = [
-
-              canvas,
-
-              createContrastCanvas(
-                canvas
-              )
-
-            ];
-
-
-            const readings =
-              [];
-
-
-            for (
-
-              let i = 0;
-
-              i <
-              variants.length;
-
-              i++
-
-            ) {
-
-              setOCRStatus(
-
-                true,
-
-                'Reading photo...',
-
-                'OCR ' +
-                (i + 1) +
-                ' of ' +
-                variants.length
-
-              );
-
-
-              const result =
-                await recognizeWithTimeout(
-
-                  worker,
-
-                  variants[i]
-
-                );
-
-
-              const text =
-                result &&
-                result.data
-                  ? result.data.text || ''
-                  : '';
-
-
-              const candidates =
-                extractMacCandidates(
-                  text
-                );
-
-
-              candidates.forEach(
-
-                function (
-                  candidate
-                ) {
-
-                  readings.push(
-                    candidate
-                  );
-
-                }
-
-              );
-
-            }
-
-
-            evaluateReadings(
-              readings
-            );
-
-
-          } catch (
-            error
-          ) {
-
-            rejectScan(
-              'Photo OCR failed: ' +
-              error.message
-            );
-
-
-          } finally {
-
-            ocrBusy =
-              false;
-
-          }
-
-        };
-
-
-      img.src =
-        e.target.result;
-
-    };
-
-
-  reader.readAsDataURL(
-    file
   );
+
+
+
+  ctx.filter =
+    'none';
+
+
+
+  return canvas;
 
 }
 
@@ -3413,18 +3875,25 @@ function normalizeMac(
   value
 ) {
 
+
   if (
     !value
   ) {
 
+
     return null;
+
 
   }
 
 
+
   const clean =
+
     String(value)
+
       .toUpperCase()
+
       .replace(
 
         /[^0-9A-F]/g,
@@ -3432,6 +3901,7 @@ function normalizeMac(
         ''
 
       );
+
 
 
   if (
@@ -3443,33 +3913,20 @@ function normalizeMac(
 
   ) {
 
+
     return null;
+
 
   }
 
 
-  return formatMac(
-    clean
-  );
 
-}
+  return clean
 
-
-
-/**
- * ==========================================================
- * FORMAT MAC
- * ==========================================================
- */
-
-function formatMac(
-  compact
-) {
-
-  return compact
     .match(
       /.{2}/g
     )
+
     .join(
       ':'
     );
@@ -3480,304 +3937,139 @@ function formatMac(
 
 /**
  * ==========================================================
- * MANUAL INPUT
+ * RESET CAPTURE STATE
  * ==========================================================
  */
 
-function handleMacInput() {
+function resetCaptureState() {
 
-  const input =
-    document.getElementById(
-      'macInput'
-    );
 
-
-  if (
-    !input
-  ) {
-
-    return;
-
-  }
-
-
-  let raw =
-    input
-      .value
-      .toUpperCase()
-      .replace(
-
-        /[^0-9A-F]/g,
-
-        ''
-
-      );
-
-
-  raw =
-    raw.substring(
-      0,
-      12
-    );
-
-
-  const groups =
-    [];
-
-
-  for (
-
-    let i = 0;
-
-    i < raw.length;
-
-    i += 2
-
-  ) {
-
-    groups.push(
-
-      raw.substring(
-        i,
-        i + 2
-      )
-
-    );
-
-  }
-
-
-  input.value =
-    groups.join(
-      ':'
-    );
-
-
-  macVerification = {
-
-    mode:
-      'manual',
-
-    confirmed:
-      false,
-
-    confidence:
-      'MANUAL',
-
-    details:
-      '',
-
-    mac:
-      normalizeMac(
-        input.value
-      ) || ''
-
-  };
-
-
-  validateMacUI();
-
-}
-
-
-
-/**
- * ==========================================================
- * VERIFIED UI
- * ==========================================================
- */
-
-function updateVerifiedMacUI() {
-
-  const input =
-    document.getElementById(
-      'macInput'
-    );
-
-
-  const saveBtn =
-    document.getElementById(
-      'saveBtn'
-    );
-
-
-  const validation =
-    document.getElementById(
-      'macValidation'
-    );
-
-
-  const mac =
-    normalizeMac(
-      input.value
-    );
-
-
-  if (
-    !mac
-  ) {
-
-    saveBtn.disabled =
-      true;
-
-    return;
-
-  }
-
-
-  input.value =
-    mac;
-
-
-  setMacState(
-
-    'valid',
-
-    'VERIFIED MAC'
-
-  );
-
-
-  validation.textContent =
-
-    'OCR verification • ' +
-
-    macVerification.confidence +
-
-    ' • ' +
-
-    macVerification.details;
-
-
-  validation.style.color =
-    '#16864b';
-
-
-  saveBtn.disabled =
+  capturedImageReady =
     false;
 
+
+  currentDetectedMac =
+    null;
+
+
+  macConfirmed =
+    false;
+
+
+  manualEdit =
+    false;
+
+
+
+  document
+
+    .getElementById(
+      'capturedSection'
+    )
+
+    .classList
+
+    .add(
+      'hidden'
+    );
+
+
+
+  document
+
+    .getElementById(
+      'confirmPanel'
+    )
+
+    .classList
+
+    .add(
+      'hidden'
+    );
+
+
+  resetMacState();
+
 }
 
 
 
 /**
  * ==========================================================
- * VALIDATE UI
+ * RESET MAC STATE
  * ==========================================================
  */
 
-function validateMacUI() {
+function resetMacState() {
+
 
   const input =
+
     document.getElementById(
       'macInput'
     );
 
 
-  const saveBtn =
+  if (
+    input
+  ) {
+
+
+    input.value =
+      '';
+
+
+  }
+
+
+
+  const save =
+
     document.getElementById(
       'saveBtn'
     );
 
 
+  if (
+    save
+  ) {
+
+
+    save.disabled =
+      true;
+
+
+  }
+
+
+
   const validation =
+
     document.getElementById(
       'macValidation'
     );
 
 
-  const mac =
-    normalizeMac(
-      input.value
-    );
-
-
   if (
-    mac
+    validation
   ) {
 
-    input.value =
-      mac;
-
-
-    if (
-      macVerification.confirmed
-    ) {
-
-      updateVerifiedMacUI();
-
-      return true;
-
-    }
-
-
-    if (
-      macVerification.mode ===
-      'manual'
-    ) {
-
-      setMacState(
-        'valid',
-        'VALID FORMAT'
-      );
-
-
-      validation.textContent =
-        'Valid MAC Address • Manual entry';
-
-
-      validation.style.color =
-        '#16864b';
-
-
-      saveBtn.disabled =
-        false;
-
-
-      return true;
-
-    }
-
-  }
-
-
-  if (
-    !input.value
-  ) {
 
     validation.textContent =
       '';
 
 
-    setMacState(
-      'waiting',
-      'Waiting for scan'
-    );
-
-
-  } else {
-
-    validation.textContent =
-      'Incomplete or invalid MAC Address';
-
-
-    validation.style.color =
-      '#d63b3b';
-
-
-    setMacState(
-      'invalid',
-      'INVALID FORMAT'
-    );
-
   }
 
 
-  saveBtn.disabled =
-    true;
 
+  setMacState(
 
-  return false;
+    'waiting',
+
+    'Waiting for capture'
+
+  );
 
 }
 
@@ -3791,35 +4083,78 @@ function validateMacUI() {
 
 function saveAndNext() {
 
+
+  const mac =
+
+    normalizeMac(
+
+      document
+
+        .getElementById(
+          'macInput'
+        )
+
+        .value
+
+    );
+
+
+
   if (
-    !validateMacUI()
+    !mac
   ) {
+
 
     showMessage(
 
-      'Please enter or verify a valid MAC Address.',
+      'Invalid MAC Address.',
 
       'error'
 
     );
+
 
     return;
 
   }
 
 
-  const btn =
+
+  if (
+    !macConfirmed
+  ) {
+
+
+    showMessage(
+
+      'Please visually confirm the MAC before saving.',
+
+      'warning'
+
+    );
+
+
+    return;
+
+  }
+
+
+
+  const button =
+
     document.getElementById(
       'saveBtn'
     );
 
 
-  btn.disabled =
+
+  button.disabled =
     true;
 
 
-  btn.textContent =
+  button.textContent =
     'SAVING...';
+
 
 
   const params = {
@@ -3831,34 +4166,40 @@ function saveAndNext() {
       'saveMac',
 
     mac:
-      document
-        .getElementById(
-          'macInput'
-        )
-        .value,
+      mac,
 
     device:
+
       document
+
         .getElementById(
           'deviceType'
         )
+
         .value,
 
     location:
+
       document
+
         .getElementById(
           'location'
         )
+
         .value,
 
     note:
+
       document
+
         .getElementById(
           'note'
         )
+
         .value
 
   };
+
 
 
   apiRequest(
@@ -3869,42 +4210,41 @@ function saveAndNext() {
       result
     ) {
 
-      btn.textContent =
+
+      button.textContent =
         'SAVE & SCAN NEXT';
+
 
 
       if (
         result.success
       ) {
 
+
         document
+
           .getElementById(
             'deviceCount'
           )
+
           .textContent =
           result.count;
 
 
-        document
-          .getElementById(
-            'macInput'
-          )
-          .value =
-          '';
-
 
         document
+
           .getElementById(
             'note'
           )
+
           .value =
           '';
 
 
-        resetVerification();
 
+        resetCaptureState();
 
-        validateMacUI();
 
 
         showMessage(
@@ -3917,10 +4257,9 @@ function saveAndNext() {
         );
 
 
-        vibrateSuccess();
-
 
         loadDashboard();
+
 
 
         window.scrollTo({
@@ -3939,40 +4278,55 @@ function saveAndNext() {
         'duplicate'
       ) {
 
-        btn.disabled =
+
+        button.disabled =
           false;
+
 
 
         let message =
 
-          'Duplicate: ' +
+          'Duplicate MAC: ' +
           result.mac;
 
 
+
         if (
-          result.existing &&
-          result.existing.location
+          result.existing
         ) {
 
-          message +=
 
-            ' • Location: ' +
-            result.existing.location;
+          if (
+            result.existing.device
+          ) {
+
+
+            message +=
+
+              ' • ' +
+              result.existing.device;
+
+
+          }
+
+
+
+          if (
+            result.existing.location
+          ) {
+
+
+            message +=
+
+              ' • ' +
+              result.existing.location;
+
+
+          }
+
 
         }
 
-
-        if (
-          result.existing &&
-          result.existing.device
-        ) {
-
-          message +=
-
-            ' • Device: ' +
-            result.existing.device;
-
-        }
 
 
         showMessage(
@@ -3986,8 +4340,10 @@ function saveAndNext() {
 
       } else {
 
-        btn.disabled =
+
+        button.disabled =
           false;
+
 
 
         showMessage(
@@ -3999,18 +4355,22 @@ function saveAndNext() {
 
         );
 
+
       }
+
 
     },
 
     function () {
 
-      btn.textContent =
+
+      button.textContent =
         'SAVE & SCAN NEXT';
 
 
-      btn.disabled =
+      button.disabled =
         false;
+
 
     }
 
@@ -4028,6 +4388,7 @@ function saveAndNext() {
 
 function loadDashboard() {
 
+
   apiRequest(
 
     {
@@ -4044,22 +4405,30 @@ function loadDashboard() {
       data
     ) {
 
+
       if (
         !data.success
       ) {
 
+
         return;
+
 
       }
 
 
+
       document
+
         .getElementById(
           'deviceCount'
         )
+
         .textContent =
+
         data.count ||
         0;
+
 
 
       renderRecent(
@@ -4068,6 +4437,7 @@ function loadDashboard() {
         []
 
       );
+
 
     }
 
@@ -4079,7 +4449,7 @@ function loadDashboard() {
 
 /**
  * ==========================================================
- * JSONP API
+ * API
  * ==========================================================
  */
 
@@ -4093,6 +4463,7 @@ function apiRequest(
 
 ) {
 
+
   if (
 
     API_URL.includes(
@@ -4100,6 +4471,7 @@ function apiRequest(
     )
 
   ) {
+
 
     showMessage(
 
@@ -4114,7 +4486,9 @@ function apiRequest(
       onError
     ) {
 
+
       onError();
+
 
     }
 
@@ -4122,6 +4496,7 @@ function apiRequest(
     return;
 
   }
+
 
 
   const callbackName =
@@ -4133,33 +4508,44 @@ function apiRequest(
     '_' +
 
     Math.floor(
+
       Math.random() *
       100000
+
     );
+
 
 
   const script =
+
     document.createElement(
       'script'
     );
+
 
 
   let finished =
     false;
 
 
+
   const timeout =
+
     setTimeout(
 
       function () {
+
 
         if (
           finished
         ) {
 
+
           return;
 
+
         }
+
 
 
         finished =
@@ -4169,22 +4555,27 @@ function apiRequest(
         cleanup();
 
 
+
         showMessage(
 
-          'Server timeout. Check Apps Script deployment.',
+          'Server timeout.',
 
           'error'
 
         );
 
 
+
         if (
           onError
         ) {
 
+
           onError();
 
+
         }
+
 
       },
 
@@ -4193,11 +4584,14 @@ function apiRequest(
     );
 
 
+
   function cleanup() {
+
 
     clearTimeout(
       timeout
     );
+
 
 
     delete window[
@@ -4205,9 +4599,11 @@ function apiRequest(
     ];
 
 
+
     if (
       script.parentNode
     ) {
+
 
       script
         .parentNode
@@ -4215,25 +4611,33 @@ function apiRequest(
           script
         );
 
+
     }
 
+
   }
+
 
 
   window[
     callbackName
   ] =
+
     function (
       data
     ) {
+
 
       if (
         finished
       ) {
 
+
         return;
 
+
       }
+
 
 
       finished =
@@ -4243,27 +4647,35 @@ function apiRequest(
       cleanup();
 
 
+
       if (
         onSuccess
       ) {
+
 
         onSuccess(
           data
         );
 
+
       }
 
+
     };
+
 
 
   parameters.callback =
     callbackName;
 
 
+
   const query =
+
     new URLSearchParams(
       parameters
     );
+
 
 
   script.src =
@@ -4275,16 +4687,22 @@ function apiRequest(
     query.toString();
 
 
+
   script.onerror =
+
     function () {
+
 
       if (
         finished
       ) {
 
+
         return;
 
+
       }
+
 
 
       finished =
@@ -4292,6 +4710,7 @@ function apiRequest(
 
 
       cleanup();
+
 
 
       showMessage(
@@ -4303,15 +4722,20 @@ function apiRequest(
       );
 
 
+
       if (
         onError
       ) {
 
+
         onError();
+
 
       }
 
+
     };
+
 
 
   document.body
@@ -4325,7 +4749,7 @@ function apiRequest(
 
 /**
  * ==========================================================
- * RECENT
+ * RECENT LIST
  * ==========================================================
  */
 
@@ -4333,17 +4757,24 @@ function renderRecent(
   items
 ) {
 
+
   const container =
+
     document.getElementById(
       'recentList'
     );
 
 
+
   if (
+
     !items ||
+
     items.length ===
     0
+
   ) {
+
 
     container.innerHTML =
 
@@ -4352,19 +4783,23 @@ function renderRecent(
       '</div>';
 
 
+
     return;
 
   }
 
 
+
   container.innerHTML =
 
     items
+
       .map(
 
         function (
           item
         ) {
+
 
           return `
 
@@ -4416,10 +4851,14 @@ function renderRecent(
 
           `;
 
+
         }
 
       )
-      .join('');
+
+      .join(
+        ''
+      );
 
 }
 
@@ -4441,23 +4880,29 @@ function setOCRStatus(
 
 ) {
 
+
   const box =
+
     document.getElementById(
       'ocrStatus'
     );
+
 
 
   if (
     !show
   ) {
 
+
     box.classList.add(
       'hidden'
     );
 
+
     return;
 
   }
+
 
 
   box.classList.remove(
@@ -4465,20 +4910,28 @@ function setOCRStatus(
   );
 
 
+
   document
+
     .getElementById(
       'ocrTitle'
     )
+
     .textContent =
+
     title ||
     'Reading...';
 
 
+
   document
+
     .getElementById(
       'ocrProgress'
     )
+
     .textContent =
+
     progress ||
     '';
 
@@ -4488,7 +4941,7 @@ function setOCRStatus(
 
 /**
  * ==========================================================
- * MAC STATE
+ * UI STATE
  * ==========================================================
  */
 
@@ -4500,15 +4953,32 @@ function setMacState(
 
 ) {
 
+
   const state =
+
     document.getElementById(
       'macState'
     );
 
 
+
+  if (
+    !state
+  ) {
+
+
+    return;
+
+
+  }
+
+
+
   state.className =
+
     'macState ' +
     type;
+
 
 
   state.textContent =
@@ -4532,10 +5002,13 @@ function setSystemStatus(
 
 ) {
 
+
   const status =
+
     document.getElementById(
       'systemStatus'
     );
+
 
 
   status.innerHTML =
@@ -4547,16 +5020,21 @@ function setSystemStatus(
     );
 
 
+
   const dot =
+
     status.querySelector(
       '.statusDot'
     );
 
 
+
   dot.style.background =
 
     ready
+
       ? '#4cea92'
+
       : '#ff7474';
 
 }
@@ -4565,7 +5043,7 @@ function setSystemStatus(
 
 /**
  * ==========================================================
- * MESSAGE
+ * MESSAGES
  * ==========================================================
  */
 
@@ -4577,20 +5055,25 @@ function showMessage(
 
 ) {
 
+
   const box =
+
     document.getElementById(
       'messageBox'
     );
+
 
 
   box.className =
     'messageBox';
 
 
+
   if (
     type ===
     'success'
   ) {
+
 
     box.classList.add(
       'messageSuccess'
@@ -4602,6 +5085,7 @@ function showMessage(
     'warning'
   ) {
 
+
     box.classList.add(
       'messageWarning'
     );
@@ -4609,15 +5093,19 @@ function showMessage(
 
   } else {
 
+
     box.classList.add(
       'messageError'
     );
 
+
   }
+
 
 
   box.textContent =
     message;
+
 
 
   box.classList.remove(
@@ -4625,13 +5113,16 @@ function showMessage(
   );
 
 
+
   setTimeout(
 
     function () {
 
+
       box.classList.add(
         'hidden'
       );
+
 
     },
 
@@ -4645,23 +5136,47 @@ function showMessage(
 
 /**
  * ==========================================================
- * HAPTIC
+ * HAPTICS
  * ==========================================================
  */
 
-function vibrateSuccess() {
+function vibrateShort() {
+
 
   if (
     navigator.vibrate
   ) {
 
+
     navigator.vibrate(
+      50
+    );
+
+
+  }
+
+}
+
+
+
+function vibrateSuccess() {
+
+
+  if (
+    navigator.vibrate
+  ) {
+
+
+    navigator.vibrate(
+
       [
         70,
         40,
         70
       ]
+
     );
+
 
   }
 
@@ -4679,14 +5194,20 @@ function escapeHtml(
   value
 ) {
 
+
   if (
+
     value === null ||
+
     value === undefined
+
   ) {
+
 
     return '';
 
   }
+
 
 
   return String(value)
