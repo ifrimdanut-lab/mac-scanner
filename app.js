@@ -2,8 +2,8 @@
  * ==========================================================
  * ICHC MAC Scanner
  *
- * Version: V1.1.2
- * iPhone Stable Scan / Consensus Engine
+ * Version: V1.1.3
+ * Strict Character Consensus
  *
  * External Camera Engine
  * ==========================================================
@@ -13,34 +13,62 @@
 /**
  * ==========================================================
  * CONFIGURATION
- *
- * IMPORTANT:
- * Replace this value with your real Apps Script /exec URL.
  * ==========================================================
  */
 
 const API_URL =
-  'https://script.google.com/a/macros/ichc.ro/s/AKfycbzDAauThmGXzKtRIYZMbgutyJI3XO_r5uRLuLhqTG8putr6wpGcfE38_dmYmdEi9XY/exec';
+  'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
 
 
 const APP_VERSION =
-  'V1.1.2';
+  'V1.1.3';
 
 
-const CONSENSUS_CAPTURE_COUNT =
-  3;
-
-
-const CONSENSUS_REQUIRED =
-  2;
+const CAMERA_CAPTURE_COUNT =
+  4;
 
 
 const CAPTURE_INTERVAL_MS =
-  320;
+  300;
 
 
-const FIRST_CAPTURE_DELAY_MS =
-  450;
+const INITIAL_STABILIZE_MS =
+  500;
+
+
+/**
+ * Every captured frame is OCR'd using:
+ * 1. Original
+ * 2. High contrast
+ * 3. Threshold
+ *
+ * Max theoretical readings:
+ * 4 x 3 = 12
+ */
+
+const MIN_VALID_READINGS =
+  4;
+
+
+/**
+ * Character-level consensus:
+ *
+ * Example:
+ * 8 of 10 valid readings must agree
+ * on each individual hex position.
+ */
+
+const CHARACTER_CONSENSUS_RATIO =
+  0.78;
+
+
+/**
+ * At least this many exact full MAC
+ * occurrences strengthen confidence.
+ */
+
+const MIN_EXACT_FULL_MATCHES =
+  2;
 
 
 
@@ -74,15 +102,6 @@ let ocrBusy =
   false;
 
 
-/**
- * Verification state
- *
- * mode:
- * none
- * manual
- * consensus
- * photo
- */
 let macVerification = {
 
   mode:
@@ -94,7 +113,7 @@ let macVerification = {
   confidence:
     '',
 
-  votes:
+  details:
     '',
 
   mac:
@@ -138,8 +157,6 @@ document.addEventListener(
 /**
  * ==========================================================
  * VERSION UI
- *
- * index.html does not need modification.
  * ==========================================================
  */
 
@@ -174,7 +191,7 @@ function updateVersionUI() {
 
     footer.textContent =
 
-      'ICHC MAC Scanner • Consensus Engine • ' +
+      'ICHC MAC Scanner • Strict Character Consensus • ' +
 
       APP_VERSION;
 
@@ -186,7 +203,7 @@ function updateVersionUI() {
 
 /**
  * ==========================================================
- * SMALL DELAY
+ * HELPER DELAY
  * ==========================================================
  */
 
@@ -426,7 +443,6 @@ async function startCamera(
     let constraints;
 
 
-
     if (
       requestedDeviceId
     ) {
@@ -443,14 +459,12 @@ async function startCamera(
 
           },
 
-
           width: {
 
             ideal:
               1920
 
           },
-
 
           height: {
 
@@ -460,7 +474,6 @@ async function startCamera(
           }
 
         },
-
 
         audio:
           false
@@ -482,14 +495,12 @@ async function startCamera(
 
           },
 
-
           width: {
 
             ideal:
               1920
 
           },
-
 
           height: {
 
@@ -500,14 +511,12 @@ async function startCamera(
 
         },
 
-
         audio:
           false
 
       };
 
     }
-
 
 
     cameraStream =
@@ -519,14 +528,11 @@ async function startCamera(
         );
 
 
-
     video.srcObject =
       cameraStream;
 
 
-
     await video.play();
-
 
 
     document
@@ -542,7 +548,6 @@ async function startCamera(
       );
 
 
-
     document
 
       .getElementById(
@@ -551,7 +556,6 @@ async function startCamera(
 
       .disabled =
       false;
-
 
 
     document
@@ -564,7 +568,6 @@ async function startCamera(
       false;
 
 
-
     document
 
       .getElementById(
@@ -575,9 +578,7 @@ async function startCamera(
       'RESTART CAMERA';
 
 
-
     await discoverCameras();
-
 
 
     const activeTrack =
@@ -586,12 +587,10 @@ async function startCamera(
         .getVideoTracks()[0];
 
 
-
     const settings =
 
       activeTrack
         .getSettings();
-
 
 
     currentDeviceId =
@@ -600,9 +599,7 @@ async function startCamera(
       null;
 
 
-
     syncCameraSelector();
-
 
 
     setSystemStatus(
@@ -697,7 +694,6 @@ function handleCameraError(
     'Camera could not be started.';
 
 
-
   switch (
     error.name
   ) {
@@ -712,7 +708,6 @@ function handleCameraError(
       break;
 
 
-
     case 'NotFoundError':
 
       message =
@@ -720,7 +715,6 @@ function handleCameraError(
         'No camera was detected on this device.';
 
       break;
-
 
 
     case 'NotReadableError':
@@ -732,7 +726,6 @@ function handleCameraError(
       break;
 
 
-
     case 'OverconstrainedError':
 
       message =
@@ -740,7 +733,6 @@ function handleCameraError(
         'The selected camera is not available.';
 
       break;
-
 
 
     case 'SecurityError':
@@ -754,7 +746,6 @@ function handleCameraError(
   }
 
 
-
   setSystemStatus(
 
     'Camera unavailable',
@@ -762,7 +753,6 @@ function handleCameraError(
     false
 
   );
-
 
 
   showMessage(
@@ -839,10 +829,8 @@ function syncCameraSelector() {
 
   ) {
 
-
     select.value =
       currentDeviceId;
-
 
   }
 
@@ -881,7 +869,6 @@ async function switchCamera() {
   }
 
 
-
   const currentIndex =
 
     videoDevices.findIndex(
@@ -902,7 +889,6 @@ async function switchCamera() {
     );
 
 
-
   currentCameraIndex =
 
     currentIndex >= 0
@@ -912,7 +898,6 @@ async function switchCamera() {
       : 0;
 
 
-
   if (
 
     currentCameraIndex >=
@@ -920,12 +905,10 @@ async function switchCamera() {
 
   ) {
 
-
     currentCameraIndex =
       0;
 
   }
-
 
 
   const nextDevice =
@@ -933,7 +916,6 @@ async function switchCamera() {
     videoDevices[
       currentCameraIndex
     ];
-
 
 
   await startCamera(
@@ -948,7 +930,7 @@ async function switchCamera() {
 
 /**
  * ==========================================================
- * RESET OCR VERIFICATION
+ * RESET VERIFICATION
  * ==========================================================
  */
 
@@ -966,7 +948,7 @@ function resetVerification() {
     confidence:
       '',
 
-    votes:
+    details:
       '',
 
     mac:
@@ -980,10 +962,7 @@ function resetVerification() {
 
 /**
  * ==========================================================
- * MAIN SCAN
- *
- * V1.1.2:
- * capture 3 independent frames.
+ * MAIN CAMERA SCAN
  * ==========================================================
  */
 
@@ -999,13 +978,11 @@ async function scanMac() {
   }
 
 
-
   const video =
 
     document.getElementById(
       'camera'
     );
-
 
 
   if (
@@ -1033,14 +1010,11 @@ async function scanMac() {
   }
 
 
-
   resetVerification();
-
 
 
   ocrBusy =
     true;
-
 
 
   const scanBtn =
@@ -1050,10 +1024,8 @@ async function scanMac() {
     );
 
 
-
   scanBtn.disabled =
     true;
-
 
 
   try {
@@ -1065,21 +1037,18 @@ async function scanMac() {
 
       'Stabilizing camera...',
 
-      'Hold the device steady'
+      'Keep the MAC label inside the scan area'
 
     );
-
 
 
     await sleep(
-      FIRST_CAPTURE_DELAY_MS
+      INITIAL_STABILIZE_MS
     );
-
 
 
     const frames =
       [];
-
 
 
     for (
@@ -1087,7 +1056,7 @@ async function scanMac() {
       let i = 0;
 
       i <
-      CONSENSUS_CAPTURE_COUNT;
+      CAMERA_CAPTURE_COUNT;
 
       i++
 
@@ -1103,30 +1072,24 @@ async function scanMac() {
         'Frame ' +
         (i + 1) +
         ' of ' +
-        CONSENSUS_CAPTURE_COUNT
+        CAMERA_CAPTURE_COUNT
 
       );
-
-
-
-      const frame =
-
-        captureVideoFrame(
-          video
-        );
-
 
 
       frames.push(
-        frame
-      );
 
+        captureVideoFrame(
+          video
+        )
+
+      );
 
 
       if (
 
         i <
-        CONSENSUS_CAPTURE_COUNT - 1
+        CAMERA_CAPTURE_COUNT - 1
 
       ) {
 
@@ -1142,8 +1105,7 @@ async function scanMac() {
     }
 
 
-
-    await processConsensusFrames(
+    await processStrictConsensus(
       frames
     );
 
@@ -1155,26 +1117,17 @@ async function scanMac() {
 
     console.error(
 
-      'Consensus scan error:',
+      'Strict consensus error:',
 
       error
 
     );
 
 
+    rejectStrictScan(
 
-    setOCRStatus(
-      false
-    );
-
-
-
-    showMessage(
-
-      'Scan error: ' +
-      error.message,
-
-      'error'
+      'Scan failed: ' +
+      error.message
 
     );
 
@@ -1184,7 +1137,6 @@ async function scanMac() {
 
     ocrBusy =
       false;
-
 
 
     if (
@@ -1207,7 +1159,9 @@ async function scanMac() {
 
 /**
  * ==========================================================
- * CAPTURE FRAME
+ * CAPTURE CAMERA FRAME
+ *
+ * Crop tighter than previous versions.
  * ==========================================================
  */
 
@@ -1223,7 +1177,6 @@ function captureVideoFrame(
     );
 
 
-
   const ctx =
 
     canvas.getContext(
@@ -1240,7 +1193,6 @@ function captureVideoFrame(
     );
 
 
-
   const sourceWidth =
     video.videoWidth;
 
@@ -1249,23 +1201,14 @@ function captureVideoFrame(
     video.videoHeight;
 
 
-
-  /*
-   * Focus on the green scanning area.
-   *
-   * Narrower than V1.1.1 to reduce unrelated
-   * numbers such as IP, serial, DNS, etc.
-   */
-
   const cropWidth =
 
     Math.floor(
 
       sourceWidth *
-      0.90
+      0.86
 
     );
-
 
 
   const cropHeight =
@@ -1273,10 +1216,9 @@ function captureVideoFrame(
     Math.floor(
 
       sourceHeight *
-      0.52
+      0.42
 
     );
-
 
 
   const startX =
@@ -1291,7 +1233,6 @@ function captureVideoFrame(
     );
 
 
-
   const startY =
 
     Math.floor(
@@ -1304,14 +1245,24 @@ function captureVideoFrame(
     );
 
 
+  /**
+   * Upscale 2x before OCR.
+   */
 
   canvas.width =
-    cropWidth;
+    cropWidth * 2;
 
 
   canvas.height =
-    cropHeight;
+    cropHeight * 2;
 
+
+  ctx.imageSmoothingEnabled =
+    true;
+
+
+  ctx.imageSmoothingQuality =
+    'high';
 
 
   ctx.drawImage(
@@ -1319,23 +1270,18 @@ function captureVideoFrame(
     video,
 
     startX,
-
     startY,
 
     cropWidth,
-
     cropHeight,
 
     0,
-
     0,
 
-    cropWidth,
-
-    cropHeight
+    canvas.width,
+    canvas.height
 
   );
-
 
 
   return canvas;
@@ -1346,11 +1292,11 @@ function captureVideoFrame(
 
 /**
  * ==========================================================
- * CONSENSUS PROCESSING
+ * STRICT CONSENSUS PROCESS
  * ==========================================================
  */
 
-async function processConsensusFrames(
+async function processStrictConsensus(
   frames
 ) {
 
@@ -1359,1004 +1305,102 @@ async function processConsensusFrames(
     await getOCRWorker();
 
 
-
-  const results =
+  const allCandidates =
     [];
-
 
 
   for (
 
-    let i = 0;
+    let frameIndex = 0;
 
-    i < frames.length;
+    frameIndex <
+    frames.length;
 
-    i++
+    frameIndex++
 
   ) {
 
 
-    setOCRStatus(
-
-      true,
-
-      'Reading MAC Address...',
-
-      'Scan ' +
-      (i + 1) +
-      ' of ' +
-      frames.length
-
-    );
-
-
-
-    const frameResult =
-
-      await recognizeFrameMAC(
-
-        worker,
-
-        frames[i],
-
-        i + 1
-
-      );
-
-
-
-    results.push(
-      frameResult
-    );
-
-
-
-    console.log(
-
-      'MAC consensus frame ' +
-      (i + 1),
-
-      frameResult
-
-    );
-
-
-  }
-
-
-
-  evaluateConsensus(
-    results
-  );
-
-}
-
-
-
-/**
- * ==========================================================
- * OCR ONE FRAME
- *
- * Pass 1 = original
- * Pass 2 = contrast only if necessary
- *
- * This keeps iPhone scan time reasonable.
- * ==========================================================
- */
-
-async function recognizeFrameMAC(
-
-  worker,
-
-  originalCanvas,
-
-  frameNumber
-
-) {
-
-
-  const originalResult =
-
-    await worker.recognize(
-      originalCanvas
-    );
-
-
-
-  const originalText =
-
-    originalResult &&
-    originalResult.data
-
-      ? originalResult.data.text || ''
-
-      : '';
-
-
-
-  console.log(
-
-    'Frame ' +
-    frameNumber +
-    ' ORIGINAL OCR:',
-
-    originalText
-
-  );
-
-
-
-  let candidate =
-
-    extractBestMacCandidate(
-      originalText
-    );
-
-
-
-  if (
-    candidate
-  ) {
-
-
-    return {
-
-      mac:
-        candidate.mac,
-
-      score:
-        candidate.score,
-
-      labeled:
-        candidate.labeled,
-
-      corrected:
-        candidate.corrected,
-
-      source:
-        'original'
-
-    };
-
-
-  }
-
-
-
-  /*
-   * Only use contrast OCR when the original
-   * did not produce a trustworthy candidate.
-   */
-
-  const contrastCanvas =
-
-    createContrastCanvas(
-      originalCanvas
-    );
-
-
-
-  const contrastResult =
-
-    await worker.recognize(
-      contrastCanvas
-    );
-
-
-
-  const contrastText =
-
-    contrastResult &&
-    contrastResult.data
-
-      ? contrastResult.data.text || ''
-
-      : '';
-
-
-
-  console.log(
-
-    'Frame ' +
-    frameNumber +
-    ' CONTRAST OCR:',
-
-    contrastText
-
-  );
-
-
-
-  candidate =
-
-    extractBestMacCandidate(
-      contrastText
-    );
-
-
-
-  if (
-    candidate
-  ) {
-
-
-    return {
-
-      mac:
-        candidate.mac,
-
-      score:
-        candidate.score,
-
-      labeled:
-        candidate.labeled,
-
-      corrected:
-        candidate.corrected,
-
-      source:
-        'contrast'
-
-    };
-
-
-  }
-
-
-
-  return {
-
-    mac:
-      null,
-
-    score:
-      0,
-
-    labeled:
-      false,
-
-    corrected:
-      false,
-
-    source:
-      'none'
-
-  };
-
-}
-
-
-
-/**
- * ==========================================================
- * CONSENSUS DECISION
- * ==========================================================
- */
-
-function evaluateConsensus(
-  results
-) {
-
-
-  const validResults =
-
-    results.filter(
-
-      function (
-        result
-      ) {
-
-        return (
-          result &&
-          result.mac
-        );
-
-      }
-
-    );
-
-
-
-  if (
-    validResults.length ===
-    0
-  ) {
-
-
-    rejectUnstableReading(
-
-      'No MAC Address could be read reliably.'
-
-    );
-
-
-    return;
-
-  }
-
-
-
-  const counts =
-    {};
-
-
-
-  validResults.forEach(
-
-    function (
-      result
-    ) {
-
-
-      if (
-        !counts[result.mac]
-      ) {
-
-
-        counts[result.mac] = {
-
-          count:
-            0,
-
-          totalScore:
-            0,
-
-          labeledCount:
-            0
-
-        };
-
-
-      }
-
-
-
-      counts[result.mac].count++;
-
-
-      counts[result.mac].totalScore +=
-        result.score || 0;
-
-
-
-      if (
-        result.labeled
-      ) {
-
-
-        counts[result.mac].labeledCount++;
-
-
-      }
-
-
-    }
-
-  );
-
-
-
-  let winnerMac =
-    null;
-
-
-  let winnerCount =
-    0;
-
-
-  let winnerScore =
-    0;
-
-
-
-  Object.keys(
-    counts
-  ).forEach(
-
-    function (
-      mac
-    ) {
-
-
-      const item =
-        counts[mac];
-
-
-
-      if (
-
-        item.count >
-        winnerCount
-
-      ) {
-
-
-        winnerMac =
-          mac;
-
-
-        winnerCount =
-          item.count;
-
-
-        winnerScore =
-          item.totalScore;
-
-
-      } else if (
-
-        item.count ===
-        winnerCount &&
-
-        item.totalScore >
-        winnerScore
-
-      ) {
-
-
-        winnerMac =
-          mac;
-
-
-        winnerScore =
-          item.totalScore;
-
-
-      }
-
-
-    }
-
-  );
-
-
-
-  /*
-   * Core V1.1.2 rule:
-   *
-   * Same MAC must appear in at least
-   * 2 of the 3 independent captures.
-   */
-
-  if (
-
-    winnerMac &&
-
-    winnerCount >=
-    CONSENSUS_REQUIRED
-
-  ) {
-
-
-    const confidence =
-
-      winnerCount ===
-      CONSENSUS_CAPTURE_COUNT
-
-        ? 'HIGH'
-
-        : 'GOOD';
-
-
-
-    acceptConsensusMac(
-
-      winnerMac,
-
-      winnerCount,
-
-      CONSENSUS_CAPTURE_COUNT,
-
-      confidence
-
-    );
-
-
-    return;
-
-  }
-
-
-
-  /*
-   * No exact consensus.
-   * Reject rather than guess.
-   */
-
-  const readable =
-
-    validResults
-      .map(
-        function (
-          result
-        ) {
-
-          return result.mac;
-
-        }
-      )
-      .join(
-        ' / '
-      );
-
-
-
-  console.warn(
-
-    'Consensus rejected:',
-
-    readable
-
-  );
-
-
-
-  rejectUnstableReading(
-
-    'Different results were detected between scans.'
-
-  );
-
-}
-
-
-
-/**
- * ==========================================================
- * ACCEPT CONSENSUS
- * ==========================================================
- */
-
-function acceptConsensusMac(
-
-  mac,
-
-  votes,
-
-  total,
-
-  confidence
-
-) {
-
-
-  const input =
-
-    document.getElementById(
-      'macInput'
-    );
-
-
-
-  input.value =
-    mac;
-
-
-
-  macVerification = {
-
-    mode:
-      'consensus',
-
-    confirmed:
-      true,
-
-    confidence:
-      confidence,
-
-    votes:
-      votes +
-      ' / ' +
-      total,
-
-    mac:
-      mac
-
-  };
-
-
-
-  updateVerifiedMacUI();
-
-
-
-  setOCRStatus(
-    false
-  );
-
-
-
-  vibrateSuccess();
-
-
-
-  showMessage(
-
-    'Confirmed MAC: ' +
-    mac +
-    ' • ' +
-    votes +
-    '/' +
-    total +
-    ' scans',
-
-    'success'
-
-  );
-
-}
-
-
-
-/**
- * ==========================================================
- * REJECT UNSTABLE READING
- * ==========================================================
- */
-
-function rejectUnstableReading(
-  reason
-) {
-
-
-  resetVerification();
-
-
-
-  const input =
-
-    document.getElementById(
-      'macInput'
-    );
-
-
-
-  input.value =
-    '';
-
-
-
-  const saveBtn =
-
-    document.getElementById(
-      'saveBtn'
-    );
-
-
-
-  saveBtn.disabled =
-    true;
-
-
-
-  setOCRStatus(
-    false
-  );
-
-
-
-  setMacState(
-
-    'invalid',
-
-    'Unstable reading'
-
-  );
-
-
-
-  const validation =
-
-    document.getElementById(
-      'macValidation'
-    );
-
-
-
-  validation.textContent =
-
-    'Not saved — scan again and hold the phone steady.';
-
-
-
-  validation.style.color =
-    '#d63b3b';
-
-
-
-  showMessage(
-
-    reason +
-    ' Hold the phone steady, keep the MAC inside the scan area and scan again.',
-
-    'warning'
-
-  );
-
-}
-
-
-
-/**
- * ==========================================================
- * PHOTO / IMAGE
- *
- * Photos cannot provide independent temporal frames,
- * so we use multiple image-processing variants.
- * User must still verify the result.
- * ==========================================================
- */
-
-function scanUploadedPhoto(
-  event
-) {
-
-
-  const file =
-
-    event
-      .target
-      .files[0];
-
-
-  if (
-    !file
-  ) {
-
-    return;
-
-  }
-
-
-
-  const reader =
-    new FileReader();
-
-
-
-  reader.onload =
-
-    function (
-      e
-    ) {
-
-
-      const img =
-        new Image();
-
-
-
-      img.onload =
-
-        async function () {
-
-
-          const canvas =
-
-            document.createElement(
-              'canvas'
-            );
-
-
-
-          const ctx =
-
-            canvas.getContext(
-
-              '2d',
-
-              {
-
-                willReadFrequently:
-                  true
-
-              }
-
-            );
-
-
-
-          const maxWidth =
-            2200;
-
-
-
-          let width =
-            img.width;
-
-
-          let height =
-            img.height;
-
-
-
-          if (
-
-            width >
-            maxWidth
-
-          ) {
-
-
-            const ratio =
-
-              maxWidth /
-              width;
-
-
-
-            width =
-              maxWidth;
-
-
-
-            height =
-
-              Math.round(
-
-                height *
-                ratio
-
-              );
-
-
-          }
-
-
-
-          canvas.width =
-            width;
-
-
-          canvas.height =
-            height;
-
-
-
-          ctx.drawImage(
-
-            img,
-
-            0,
-
-            0,
-
-            width,
-
-            height
-
-          );
-
-
-
-          await processUploadedPhoto(
-            canvas
-          );
-
-
-        };
-
-
-
-      img.src =
-        e.target.result;
-
-
-    };
-
-
-
-  reader.readAsDataURL(
-    file
-  );
-
-}
-
-
-
-/**
- * ==========================================================
- * PROCESS UPLOADED PHOTO
- * ==========================================================
- */
-
-async function processUploadedPhoto(
-  canvas
-) {
-
-
-  if (
-    ocrBusy
-  ) {
-
-    return;
-
-  }
-
-
-
-  ocrBusy =
-    true;
-
-
-
-  resetVerification();
-
-
-
-  setOCRStatus(
-
-    true,
-
-    'Reading photo...',
-
-    'Searching for MAC Address'
-
-  );
-
-
-
-  try {
-
-
-    const worker =
-      await getOCRWorker();
-
+    const frame =
+      frames[
+        frameIndex
+      ];
 
 
     const variants = [
 
-      canvas,
+      {
+        name:
+          'original',
 
-      createContrastCanvas(
-        canvas
-      ),
+        canvas:
+          cloneCanvas(
+            frame
+          )
+      },
 
-      createThresholdCanvas(
-        canvas
-      )
+      {
+        name:
+          'contrast',
+
+        canvas:
+          createContrastCanvas(
+            frame
+          )
+      },
+
+      {
+        name:
+          'threshold',
+
+        canvas:
+          createThresholdCanvas(
+            frame
+          )
+      }
 
     ];
 
 
-
-    const candidates =
-      [];
-
-
-
     for (
 
-      let i = 0;
+      let variantIndex = 0;
 
-      i < variants.length;
+      variantIndex <
+      variants.length;
 
-      i++
+      variantIndex++
 
     ) {
+
+
+      const variant =
+        variants[
+          variantIndex
+        ];
 
 
       setOCRStatus(
 
         true,
 
-        'Reading photo...',
+        'Strict OCR analysis...',
 
-        'Analysis ' +
-        (i + 1) +
-        ' of ' +
-        variants.length
+        'Frame ' +
+        (frameIndex + 1) +
+        '/' +
+        frames.length +
+        ' • ' +
+        variant.name
 
       );
-
 
 
       const result =
 
         await worker.recognize(
-          variants[i]
+          variant.canvas
         );
-
 
 
       const text =
@@ -2369,78 +1413,214 @@ async function processUploadedPhoto(
           : '';
 
 
-
       console.log(
 
-        'Photo OCR pass ' +
-        (i + 1),
+        'OCR frame ' +
+        (frameIndex + 1) +
+        ' ' +
+        variant.name +
+        ':',
 
         text
 
       );
 
 
+      const candidates =
 
-      const candidate =
-
-        extractBestMacCandidate(
+        extractStrictMacCandidates(
           text
         );
 
 
+      candidates.forEach(
 
-      if (
-        candidate
-      ) {
-
-
-        candidates.push(
+        function (
           candidate
-        );
+        ) {
 
 
-      }
+          allCandidates.push({
+
+            mac:
+              candidate.mac,
+
+            score:
+              candidate.score,
+
+            labeled:
+              candidate.labeled,
+
+            frame:
+              frameIndex + 1,
+
+            variant:
+              variant.name
+
+          });
 
 
-    }
-
-
-
-    if (
-      candidates.length ===
-      0
-    ) {
-
-
-      rejectUnstableReading(
-
-        'No MAC Address was detected in the photo.'
+        }
 
       );
 
 
-      return;
-
     }
 
 
+  }
 
-    const counts =
+
+  console.log(
+
+    'ALL STRICT CANDIDATES:',
+
+    allCandidates
+
+  );
+
+
+  evaluateCharacterConsensus(
+    allCandidates
+  );
+
+}
+
+
+
+/**
+ * ==========================================================
+ * STRICT CHARACTER CONSENSUS
+ * ==========================================================
+ */
+
+function evaluateCharacterConsensus(
+  candidates
+) {
+
+
+  if (
+
+    !candidates ||
+
+    candidates.length <
+    MIN_VALID_READINGS
+
+  ) {
+
+
+    rejectStrictScan(
+
+      'Not enough reliable OCR readings.'
+
+    );
+
+
+    return;
+
+  }
+
+
+  const compactReadings =
+
+    candidates
+
+      .map(
+
+        function (
+          candidate
+        ) {
+
+
+          return candidate.mac
+            .replace(
+              /:/g,
+              ''
+            );
+
+
+        }
+
+      )
+
+      .filter(
+
+        function (
+          mac
+        ) {
+
+
+          return (
+            /^[0-9A-F]{12}$/
+              .test(
+                mac
+              )
+          );
+
+
+        }
+
+      );
+
+
+  if (
+
+    compactReadings.length <
+    MIN_VALID_READINGS
+
+  ) {
+
+
+    rejectStrictScan(
+
+      'Not enough valid MAC readings.'
+
+    );
+
+
+    return;
+
+  }
+
+
+  const finalChars =
+    [];
+
+
+  const positionConfidence =
+    [];
+
+
+  for (
+
+    let pos = 0;
+
+    pos < 12;
+
+    pos++
+
+  ) {
+
+
+    const frequency =
       {};
 
 
-
-    candidates.forEach(
+    compactReadings.forEach(
 
       function (
-        candidate
+        reading
       ) {
 
 
-        counts[candidate.mac] =
+        const char =
+          reading[pos];
+
+
+        frequency[char] =
 
           (
-            counts[candidate.mac] ||
+            frequency[char] ||
             0
           ) + 1;
 
@@ -2450,39 +1630,37 @@ async function processUploadedPhoto(
     );
 
 
-
-    let winnerMac =
+    let bestChar =
       null;
 
 
-    let winnerCount =
+    let bestCount =
       0;
 
 
-
     Object.keys(
-      counts
+      frequency
     ).forEach(
 
       function (
-        mac
+        char
       ) {
 
 
         if (
 
-          counts[mac] >
-          winnerCount
+          frequency[char] >
+          bestCount
 
         ) {
 
 
-          winnerMac =
-            mac;
+          bestChar =
+            char;
 
 
-          winnerCount =
-            counts[mac];
+          bestCount =
+            frequency[char];
 
 
         }
@@ -2493,120 +1671,189 @@ async function processUploadedPhoto(
     );
 
 
+    const ratio =
+
+      bestCount /
+      compactReadings.length;
+
+
+    positionConfidence.push(
+      ratio
+    );
+
 
     if (
 
-      winnerMac &&
-
-      winnerCount >=
-      2
+      ratio <
+      CHARACTER_CONSENSUS_RATIO
 
     ) {
 
 
-      const input =
+      console.warn(
 
-        document.getElementById(
-          'macInput'
-        );
+        'Character consensus failed at position',
 
+        pos,
 
-
-      input.value =
-        winnerMac;
-
-
-
-      macVerification = {
-
-        mode:
-          'photo',
-
-        confirmed:
-          true,
-
-        confidence:
-          'GOOD',
-
-        votes:
-          winnerCount +
-          ' / 3 analyses',
-
-        mac:
-          winnerMac
-
-      };
-
-
-
-      updateVerifiedMacUI();
-
-
-
-      setOCRStatus(
-        false
-      );
-
-
-
-      showMessage(
-
-        'MAC detected from photo: ' +
-        winnerMac,
-
-        'success'
+        frequency
 
       );
 
 
-    } else {
+      rejectStrictScan(
 
-
-      rejectUnstableReading(
-
-        'The photo produced inconsistent OCR results.'
+        'One or more MAC characters are ambiguous.'
 
       );
 
+
+      return;
 
     }
 
 
-  } catch (
-    error
-  ) {
-
-
-    console.error(
-      error
+    finalChars.push(
+      bestChar
     );
-
-
-
-    setOCRStatus(
-      false
-    );
-
-
-
-    showMessage(
-
-      'OCR error: ' +
-      error.message,
-
-      'error'
-
-    );
-
-
-  } finally {
-
-
-    ocrBusy =
-      false;
 
 
   }
+
+
+  const finalCompact =
+
+    finalChars.join(
+      ''
+    );
+
+
+  const finalMac =
+
+    formatMac(
+      finalCompact
+    );
+
+
+  /**
+   * ========================================================
+   * FULL-MAC SUPPORT CHECK
+   * ========================================================
+   */
+
+  let exactFullMatches =
+    0;
+
+
+  compactReadings.forEach(
+
+    function (
+      reading
+    ) {
+
+
+      if (
+        reading ===
+        finalCompact
+      ) {
+
+
+        exactFullMatches++;
+
+
+      }
+
+
+    }
+
+  );
+
+
+  if (
+
+    exactFullMatches <
+    MIN_EXACT_FULL_MATCHES
+
+  ) {
+
+
+    rejectStrictScan(
+
+      'Character consensus exists, but the full MAC is not repeated enough.'
+
+    );
+
+
+    return;
+
+  }
+
+
+  /**
+   * ========================================================
+   * MAC PREFIX / STRUCTURE SANITY CHECK
+   * ========================================================
+   */
+
+  if (
+    !isPlausibleMac(
+      finalMac
+    )
+  ) {
+
+
+    rejectStrictScan(
+
+      'The detected value does not pass MAC sanity checks.'
+
+    );
+
+
+    return;
+
+  }
+
+
+  const weakestPosition =
+
+    Math.min(
+      ...positionConfidence
+    );
+
+
+  let confidence =
+    'GOOD';
+
+
+  if (
+
+    weakestPosition >= 0.90 &&
+
+    exactFullMatches >= 4
+
+  ) {
+
+
+    confidence =
+      'HIGH';
+
+
+  }
+
+
+  acceptStrictMac(
+
+    finalMac,
+
+    confidence,
+
+    compactReadings.length,
+
+    exactFullMatches,
+
+    weakestPosition
+
+  );
 
 }
 
@@ -2614,7 +1861,767 @@ async function processUploadedPhoto(
 
 /**
  * ==========================================================
- * CLONE CANVAS
+ * MAC SANITY CHECK
+ * ==========================================================
+ */
+
+function isPlausibleMac(
+  mac
+) {
+
+
+  const compact =
+
+    String(mac)
+
+      .replace(
+        /:/g,
+        ''
+      )
+
+      .toUpperCase();
+
+
+  if (
+    !/^[0-9A-F]{12}$/
+      .test(
+        compact
+      )
+  ) {
+
+
+    return false;
+
+
+  }
+
+
+  /**
+   * Reject impossible / placeholder values.
+   */
+
+  const blocked = [
+
+    '000000000000',
+
+    'FFFFFFFFFFFF',
+
+    '111111111111'
+
+  ];
+
+
+  if (
+    blocked.includes(
+      compact
+    )
+  ) {
+
+
+    return false;
+
+
+  }
+
+
+  return true;
+
+}
+
+
+
+/**
+ * ==========================================================
+ * ACCEPT STRICT MAC
+ * ==========================================================
+ */
+
+function acceptStrictMac(
+
+  mac,
+
+  confidence,
+
+  totalReadings,
+
+  exactMatches,
+
+  weakestRatio
+
+) {
+
+
+  const input =
+
+    document.getElementById(
+      'macInput'
+    );
+
+
+  input.value =
+    mac;
+
+
+  macVerification = {
+
+    mode:
+      'strict',
+
+    confirmed:
+      true,
+
+    confidence:
+      confidence,
+
+    details:
+
+      exactMatches +
+      ' exact matches • ' +
+
+      totalReadings +
+      ' valid readings • weakest char ' +
+
+      Math.round(
+        weakestRatio *
+        100
+      ) +
+      '%',
+
+    mac:
+      mac
+
+  };
+
+
+  updateVerifiedMacUI();
+
+
+  setOCRStatus(
+    false
+  );
+
+
+  vibrateSuccess();
+
+
+  showMessage(
+
+    'STRICT VERIFIED: ' +
+    mac,
+
+    'success'
+
+  );
+
+}
+
+
+
+/**
+ * ==========================================================
+ * REJECT STRICT SCAN
+ * ==========================================================
+ */
+
+function rejectStrictScan(
+  reason
+) {
+
+
+  resetVerification();
+
+
+  const input =
+
+    document.getElementById(
+      'macInput'
+    );
+
+
+  input.value =
+    '';
+
+
+  const saveBtn =
+
+    document.getElementById(
+      'saveBtn'
+    );
+
+
+  saveBtn.disabled =
+    true;
+
+
+  setOCRStatus(
+    false
+  );
+
+
+  setMacState(
+
+    'invalid',
+
+    'OCR UNVERIFIED'
+
+  );
+
+
+  const validation =
+
+    document.getElementById(
+      'macValidation'
+    );
+
+
+  validation.textContent =
+
+    'Result rejected — ' +
+    reason;
+
+
+  validation.style.color =
+    '#d63b3b';
+
+
+  showMessage(
+
+    reason +
+    ' Move closer, keep the label flat and scan again.',
+
+    'warning'
+
+  );
+
+}
+
+
+
+/**
+ * ==========================================================
+ * STRICT MAC EXTRACTION
+ *
+ * No generic sliding-window fallback.
+ * No automatic O→0 / G→6 / S→5 correction.
+ * ==========================================================
+ */
+
+function extractStrictMacCandidates(
+  text
+) {
+
+
+  if (
+    !text
+  ) {
+
+
+    return [];
+
+
+  }
+
+
+  const upper =
+
+    String(text)
+
+      .toUpperCase()
+
+      .replace(
+        /\r/g,
+        '\n'
+      );
+
+
+  const lines =
+
+    upper.split(
+      '\n'
+    );
+
+
+  const results =
+    [];
+
+
+  /**
+   * ========================================================
+   * PRIORITY 1:
+   * MAC-LABELED LINES
+   * ========================================================
+   */
+
+  for (
+
+    let i = 0;
+
+    i < lines.length;
+
+    i++
+
+  ) {
+
+
+    const line =
+      lines[i];
+
+
+    if (
+      isMacContextLine(
+        line
+      )
+    ) {
+
+
+      results.push(
+
+        ...extractExactMacPatterns(
+
+          line,
+
+          true
+
+        )
+
+      );
+
+
+      /**
+       * Also inspect next line because some interfaces show:
+       *
+       * Physical address (MAC):
+       * 48:EA:62:CB:B6:8B
+       */
+
+      if (
+
+        i + 1 <
+        lines.length
+
+      ) {
+
+
+        results.push(
+
+          ...extractExactMacPatterns(
+
+            lines[
+              i + 1
+            ],
+
+            true
+
+          )
+
+        );
+
+
+      }
+
+
+    }
+
+
+  }
+
+
+  /**
+   * ========================================================
+   * PRIORITY 2:
+   * Explicitly separated MAC anywhere.
+   *
+   * Safer than compact 12-char scanning.
+   * ========================================================
+   */
+
+  lines.forEach(
+
+    function (
+      line
+    ) {
+
+
+      results.push(
+
+        ...extractExactMacPatterns(
+
+          line,
+
+          false
+
+        )
+
+      );
+
+
+    }
+
+  );
+
+
+  /**
+   * Deduplicate within a single OCR result.
+   */
+
+  const bestByMac =
+    {};
+
+
+  results.forEach(
+
+    function (
+      item
+    ) {
+
+
+      if (
+
+        !bestByMac[item.mac] ||
+
+        item.score >
+        bestByMac[item.mac].score
+
+      ) {
+
+
+        bestByMac[item.mac] =
+          item;
+
+
+      }
+
+
+    }
+
+  );
+
+
+  return Object.values(
+    bestByMac
+  );
+
+}
+
+
+
+/**
+ * ==========================================================
+ * MAC CONTEXT LABELS
+ * ==========================================================
+ */
+
+function isMacContextLine(
+  line
+) {
+
+
+  const value =
+
+    String(line)
+      .toUpperCase();
+
+
+  const labels = [
+
+    'PHYSICAL ADDRESS',
+
+    'PHYSICAL ADDRESS (MAC)',
+
+    'MAC ADDRESS',
+
+    'MACADDRESS',
+
+    'MAC:',
+
+    'MAC ',
+
+    'WLAN MAC',
+
+    'WIRELESS MAC',
+
+    'WI-FI ADDRESS',
+
+    'WIFI ADDRESS',
+
+    'ETHERNET MAC',
+
+    'LAN MAC',
+
+    'NETWORK ADDRESS'
+
+  ];
+
+
+  return labels.some(
+
+    function (
+      label
+    ) {
+
+
+      return value.includes(
+        label
+      );
+
+
+    }
+
+  );
+
+}
+
+
+
+/**
+ * ==========================================================
+ * EXACT MAC PATTERNS
+ * ==========================================================
+ */
+
+function extractExactMacPatterns(
+
+  line,
+
+  labeled
+
+) {
+
+
+  const results =
+    [];
+
+
+  const value =
+
+    String(line)
+      .toUpperCase();
+
+
+  /**
+   * 48:EA:62:CB:B6:8B
+   */
+
+  const colonMatches =
+
+    value.match(
+      /(?:[0-9A-F]{2}:){5}[0-9A-F]{2}/g
+    );
+
+
+  if (
+    colonMatches
+  ) {
+
+
+    colonMatches.forEach(
+
+      function (
+        match
+      ) {
+
+
+        results.push({
+
+          mac:
+            normalizeMac(
+              match
+            ),
+
+          score:
+            labeled
+              ? 130
+              : 90,
+
+          labeled:
+            labeled
+
+        });
+
+
+      }
+
+    );
+
+
+  }
+
+
+  /**
+   * 48-EA-62-CB-B6-8B
+   */
+
+  const dashMatches =
+
+    value.match(
+      /(?:[0-9A-F]{2}-){5}[0-9A-F]{2}/g
+    );
+
+
+  if (
+    dashMatches
+  ) {
+
+
+    dashMatches.forEach(
+
+      function (
+        match
+      ) {
+
+
+        results.push({
+
+          mac:
+            normalizeMac(
+              match
+            ),
+
+          score:
+            labeled
+              ? 125
+              : 85,
+
+          labeled:
+            labeled
+
+        });
+
+
+      }
+
+    );
+
+
+  }
+
+
+  /**
+   * AABB.CCDD.EEFF
+   */
+
+  const dotMatches =
+
+    value.match(
+      /\b[0-9A-F]{4}\.[0-9A-F]{4}\.[0-9A-F]{4}\b/g
+    );
+
+
+  if (
+    dotMatches
+  ) {
+
+
+    dotMatches.forEach(
+
+      function (
+        match
+      ) {
+
+
+        results.push({
+
+          mac:
+            normalizeMac(
+              match
+            ),
+
+          score:
+            labeled
+              ? 120
+              : 80,
+
+          labeled:
+            labeled
+
+        });
+
+
+      }
+
+    );
+
+
+  }
+
+
+  /**
+   * Compact 12-char form is accepted ONLY
+   * on a MAC-labeled line.
+   */
+
+  if (
+    labeled
+  ) {
+
+
+    const compactMatches =
+
+      value.match(
+        /\b[0-9A-F]{12}\b/g
+      );
+
+
+    if (
+      compactMatches
+    ) {
+
+
+      compactMatches.forEach(
+
+        function (
+          match
+        ) {
+
+
+          results.push({
+
+            mac:
+              normalizeMac(
+                match
+              ),
+
+            score:
+              100,
+
+            labeled:
+              true
+
+          });
+
+
+        }
+
+      );
+
+
+    }
+
+
+  }
+
+
+  return results.filter(
+
+    function (
+      item
+    ) {
+
+
+      return !!item.mac;
+
+
+    }
+
+  );
+
+}
+
+
+
+/**
+ * ==========================================================
+ * IMAGE VARIANTS
  * ==========================================================
  */
 
@@ -2630,14 +2637,12 @@ function cloneCanvas(
     );
 
 
-
   canvas.width =
     source.width;
 
 
   canvas.height =
     source.height;
-
 
 
   const ctx =
@@ -2656,7 +2661,6 @@ function cloneCanvas(
     );
 
 
-
   ctx.drawImage(
 
     source,
@@ -2668,7 +2672,6 @@ function cloneCanvas(
   );
 
 
-
   return canvas;
 
 }
@@ -2677,7 +2680,7 @@ function cloneCanvas(
 
 /**
  * ==========================================================
- * HIGH CONTRAST IMAGE
+ * HIGH CONTRAST
  * ==========================================================
  */
 
@@ -2693,7 +2696,6 @@ function createContrastCanvas(
     );
 
 
-
   const ctx =
 
     canvas.getContext(
@@ -2708,7 +2710,6 @@ function createContrastCanvas(
       }
 
     );
-
 
 
   const imageData =
@@ -2726,15 +2727,12 @@ function createContrastCanvas(
     );
 
 
-
   const data =
     imageData.data;
 
 
-
   const contrast =
     1.55;
-
 
 
   for (
@@ -2764,7 +2762,6 @@ function createContrastCanvas(
       0.114;
 
 
-
     let value =
 
       (
@@ -2779,7 +2776,6 @@ function createContrastCanvas(
       +
 
       128;
-
 
 
     value =
@@ -2799,7 +2795,6 @@ function createContrastCanvas(
       );
 
 
-
     data[i] =
       value;
 
@@ -2815,7 +2810,6 @@ function createContrastCanvas(
   }
 
 
-
   ctx.putImageData(
 
     imageData,
@@ -2827,7 +2821,6 @@ function createContrastCanvas(
   );
 
 
-
   return canvas;
 
 }
@@ -2836,7 +2829,7 @@ function createContrastCanvas(
 
 /**
  * ==========================================================
- * BLACK / WHITE IMAGE
+ * THRESHOLD
  * ==========================================================
  */
 
@@ -2850,7 +2843,6 @@ function createThresholdCanvas(
     cloneCanvas(
       source
     );
-
 
 
   const ctx =
@@ -2869,7 +2861,6 @@ function createThresholdCanvas(
     );
 
 
-
   const imageData =
 
     ctx.getImageData(
@@ -2885,15 +2876,12 @@ function createThresholdCanvas(
     );
 
 
-
   const data =
     imageData.data;
 
 
-
   const threshold =
     155;
-
 
 
   for (
@@ -2923,7 +2911,6 @@ function createThresholdCanvas(
       0.114;
 
 
-
     const value =
 
       gray >= threshold
@@ -2931,7 +2918,6 @@ function createThresholdCanvas(
         ? 255
 
         : 0;
-
 
 
     data[i] =
@@ -2949,7 +2935,6 @@ function createThresholdCanvas(
   }
 
 
-
   ctx.putImageData(
 
     imageData,
@@ -2959,7 +2944,6 @@ function createThresholdCanvas(
     0
 
   );
-
 
 
   return canvas;
@@ -2988,7 +2972,6 @@ async function getOCRWorker() {
   }
 
 
-
   setOCRStatus(
 
     true,
@@ -2998,7 +2981,6 @@ async function getOCRWorker() {
     'First scan may take a few seconds.'
 
   );
-
 
 
   ocrWorker =
@@ -3024,7 +3006,7 @@ async function getOCRWorker() {
                 message.status &&
 
                 message.progress !==
-                  undefined
+                undefined
 
               ) {
 
@@ -3037,7 +3019,6 @@ async function getOCRWorker() {
                     100
 
                   );
-
 
 
                 setOCRStatus(
@@ -3065,22 +3046,22 @@ async function getOCRWorker() {
       );
 
 
+  /**
+   * Important:
+   * no aggressive OCR substitutions.
+   */
 
   await ocrWorker.setParameters({
 
-
     tessedit_char_whitelist:
 
-      '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz:-.() ',
-
+      '0123456789ABCDEFabcdef:-.() PHYSICALMACADDRESSWLANWIFIETHERNETNETWORK',
 
     preserve_interword_spaces:
 
       '1'
 
-
   });
-
 
 
   return ocrWorker;
@@ -3091,785 +3072,286 @@ async function getOCRWorker() {
 
 /**
  * ==========================================================
- * MAC KEYWORDS
- * ==========================================================
- */
-
-function isMacLabelLine(
-  line
-) {
-
-
-  const value =
-
-    String(
-      line
-    )
-      .toUpperCase();
-
-
-
-  const labels = [
-
-
-    'PHYSICAL ADDRESS',
-
-
-    'PHYSICAL ADDRESS (MAC)',
-
-
-    'MAC ADDRESS',
-
-
-    'MACADDRESS',
-
-
-    'MAC:',
-
-
-    'MAC ',
-
-
-    'WLAN MAC',
-
-
-    'WIRELESS MAC',
-
-
-    'WI-FI ADDRESS',
-
-
-    'WIFI ADDRESS',
-
-
-    'ETHERNET MAC',
-
-
-    'LAN MAC',
-
-
-    'NETWORK ADDRESS'
-
-
-  ];
-
-
-
-  return labels.some(
-
-    function (
-      label
-    ) {
-
-
-      return value.includes(
-        label
-      );
-
-
-    }
-
-  );
-
-}
-
-
-
-/**
- * ==========================================================
- * EXTRACT BEST CANDIDATE
+ * PHOTO / IMAGE
  *
- * V1.1.2 deliberately avoids arbitrary
- * 12-character sliding windows.
+ * Uses same strict character consensus across
+ * three processing variants.
  * ==========================================================
  */
 
-function extractBestMacCandidate(
-  text
+function scanUploadedPhoto(
+  event
 ) {
 
 
+  const file =
+
+    event
+      .target
+      .files[0];
+
+
   if (
-    !text
+    !file
   ) {
 
 
-    return null;
+    return;
 
 
   }
 
 
+  const reader =
+    new FileReader();
 
-  const upper =
 
-    String(text)
-
-      .toUpperCase()
-
-      .replace(
-        /\r/g,
-        '\n'
-      );
-
-
-
-  const candidates =
-    [];
-
-
-
-  const lines =
-
-    upper.split(
-      '\n'
-    );
-
-
-
-  /**
-   * ========================================================
-   * PASS 1
-   * Lines explicitly describing MAC address.
-   * ========================================================
-   */
-
-  for (
-
-    let i = 0;
-
-    i < lines.length;
-
-    i++
-
-  ) {
-
-
-    const line =
-      lines[i];
-
-
-
-    if (
-      !isMacLabelLine(
-        line
-      )
-    ) {
-
-
-      continue;
-
-
-    }
-
-
-
-    const found =
-
-      extractStrictCandidatesFromLine(
-
-        line,
-
-        true
-
-      );
-
-
-
-    candidates.push(
-      ...found
-    );
-
-
-
-    /*
-     * Sometimes label and MAC are on adjacent lines.
-     */
-
-    if (
-
-      i + 1 <
-      lines.length
-
-    ) {
-
-
-      const nextLineFound =
-
-        extractStrictCandidatesFromLine(
-
-          lines[i + 1],
-
-          true
-
-        );
-
-
-
-      candidates.push(
-        ...nextLineFound
-      );
-
-
-    }
-
-
-  }
-
-
-
-  /**
-   * ========================================================
-   * PASS 2
-   * Strict, separator-based MAC anywhere in OCR.
-   *
-   * No OCR corrections here.
-   * ========================================================
-   */
-
-  const standardPatterns = [
-
-
-    /(?:[0-9A-F]{2}:){5}[0-9A-F]{2}/g,
-
-
-    /(?:[0-9A-F]{2}-){5}[0-9A-F]{2}/g,
-
-
-    /\b[0-9A-F]{4}\.[0-9A-F]{4}\.[0-9A-F]{4}\b/g
-
-
-  ];
-
-
-
-  standardPatterns.forEach(
+  reader.onload =
 
     function (
-      pattern
+      e
     ) {
 
 
-      const matches =
+      const img =
+        new Image();
 
-        upper.match(
-          pattern
-        );
 
+      img.onload =
 
-
-      if (
-        matches
-      ) {
-
-
-        matches.forEach(
-
-          function (
-            match
-          ) {
-
-
-            const mac =
-
-              normalizeMac(
-                match
-              );
-
-
-
-            if (
-              mac
-            ) {
-
-
-              candidates.push({
-
-                mac:
-                  mac,
-
-                score:
-                  75,
-
-                labeled:
-                  false,
-
-                corrected:
-                  false
-
-              });
-
-
-            }
-
-
-          }
-
-        );
-
-
-      }
-
-
-    }
-
-  );
-
-
-
-  if (
-    candidates.length ===
-    0
-  ) {
-
-
-    return null;
-
-
-  }
-
-
-
-  /**
-   * Deduplicate and keep highest score.
-   */
-
-  const bestByMac =
-    {};
-
-
-
-  candidates.forEach(
-
-    function (
-      candidate
-    ) {
-
-
-      if (
-
-        !bestByMac[candidate.mac] ||
-
-        candidate.score >
-        bestByMac[candidate.mac].score
-
-      ) {
-
-
-        bestByMac[candidate.mac] =
-          candidate;
-
-
-      }
-
-
-    }
-
-  );
-
-
-
-  const unique =
-
-    Object.values(
-      bestByMac
-    );
-
-
-
-  unique.sort(
-
-    function (
-      a,
-      b
-    ) {
-
-
-      return (
-        b.score -
-        a.score
-      );
-
-
-    }
-
-  );
-
-
-
-  return unique[0] ||
-    null;
-
-}
-
-
-
-/**
- * ==========================================================
- * STRICT CANDIDATES FROM LABELED LINE
- * ==========================================================
- */
-
-function extractStrictCandidatesFromLine(
-
-  line,
-
-  labeled
-
-) {
-
-
-  const results =
-    [];
-
-
-
-  const original =
-
-    String(line)
-      .toUpperCase();
-
-
-
-  /**
-   * Exact separator forms.
-   */
-
-  const standardPatterns = [
-
-
-    /(?:[0-9A-F]{2}:){5}[0-9A-F]{2}/g,
-
-
-    /(?:[0-9A-F]{2}-){5}[0-9A-F]{2}/g,
-
-
-    /\b[0-9A-F]{4}\.[0-9A-F]{4}\.[0-9A-F]{4}\b/g
-
-
-  ];
-
-
-
-  standardPatterns.forEach(
-
-    function (
-      pattern
-    ) {
-
-
-      const matches =
-
-        original.match(
-          pattern
-        );
-
-
-
-      if (
-        matches
-      ) {
-
-
-        matches.forEach(
-
-          function (
-            match
-          ) {
-
-
-            const mac =
-
-              normalizeMac(
-                match
-              );
-
-
-
-            if (
-              mac
-            ) {
-
-
-              results.push({
-
-                mac:
-                  mac,
-
-                score:
-                  labeled
-                    ? 120
-                    : 80,
-
-                labeled:
-                  labeled,
-
-                corrected:
-                  false
-
-              });
-
-
-            }
-
-
-          }
-
-        );
-
-
-      }
-
-
-    }
-
-  );
-
-
-
-  /**
-   * Compact 12-hex MAC is accepted ONLY
-   * on a MAC-labeled line.
-   */
-
-  if (
-    labeled
-  ) {
-
-
-    const compactMatches =
-
-      original.match(
-        /\b[0-9A-F]{12}\b/g
-      );
-
-
-
-    if (
-      compactMatches
-    ) {
-
-
-      compactMatches.forEach(
-
-        function (
-          match
-        ) {
-
-
-          const mac =
-
-            normalizeMac(
-              match
-            );
-
+        async function () {
 
 
           if (
-            mac
+            ocrBusy
           ) {
 
 
-            results.push({
-
-              mac:
-                mac,
-
-              score:
-                105,
-
-              labeled:
-                true,
-
-              corrected:
-                false
-
-            });
+            return;
 
 
           }
 
 
-        }
-
-      );
-
-
-    }
+          ocrBusy =
+            true;
 
 
-  }
+          resetVerification();
 
 
-
-  /**
-   * OCR correction is allowed ONLY
-   * when the line is known to describe a MAC.
-   */
-
-  if (
-    labeled
-  ) {
+          try {
 
 
-    const corrected =
+            const canvas =
 
-      applyMacOCRCorrections(
-        original
-      );
-
-
-
-    const correctedPatterns = [
+              document.createElement(
+                'canvas'
+              );
 
 
-      /(?:[0-9A-F]{2}:){5}[0-9A-F]{2}/g,
+            const ctx =
+
+              canvas.getContext(
+
+                '2d',
+
+                {
+
+                  willReadFrequently:
+                    true
+
+                }
+
+              );
 
 
-      /(?:[0-9A-F]{2}-){5}[0-9A-F]{2}/g,
+            const maxWidth =
+              2400;
 
 
-      /\b[0-9A-F]{12}\b/g
+            let width =
+              img.width;
 
 
-    ];
+            let height =
+              img.height;
 
 
+            if (
 
-    correctedPatterns.forEach(
+              width >
+              maxWidth
 
-      function (
-        pattern
-      ) {
-
-
-        const matches =
-
-          corrected.match(
-            pattern
-          );
-
-
-
-        if (
-          matches
-        ) {
-
-
-          matches.forEach(
-
-            function (
-              match
             ) {
 
 
-              const mac =
+              const ratio =
 
-                normalizeMac(
-                  match
+                maxWidth /
+                width;
+
+
+              width =
+                maxWidth;
+
+
+              height =
+
+                Math.round(
+
+                  height *
+                  ratio
+
                 );
-
-
-
-              if (
-                mac
-              ) {
-
-
-                results.push({
-
-                  mac:
-                    mac,
-
-                  score:
-                    90,
-
-                  labeled:
-                    true,
-
-                  corrected:
-                    true
-
-                });
-
-
-              }
 
 
             }
 
-          );
+
+            canvas.width =
+              width;
 
 
-        }
+            canvas.height =
+              height;
 
 
-      }
+            ctx.drawImage(
 
-    );
+              img,
 
+              0,
 
-  }
+              0,
 
+              width,
 
+              height
 
-  return results;
-
-}
-
-
-
-/**
- * ==========================================================
- * SAFE OCR CORRECTIONS
- *
- * Applied only to MAC-labeled lines.
- * ==========================================================
- */
-
-function applyMacOCRCorrections(
-  value
-) {
+            );
 
 
-  return String(value)
+            const worker =
+              await getOCRWorker();
 
-    .toUpperCase()
 
-    .replace(
-      /O/g,
-      '0'
-    )
+            const variants = [
 
-    .replace(
-      /Q/g,
-      '0'
-    )
+              cloneCanvas(
+                canvas
+              ),
 
-    .replace(
-      /I/g,
-      '1'
-    )
+              createContrastCanvas(
+                canvas
+              ),
 
-    .replace(
-      /L/g,
-      '1'
-    )
+              createThresholdCanvas(
+                canvas
+              )
 
-    .replace(
-      /S/g,
-      '5'
-    )
+            ];
 
-    .replace(
-      /G/g,
-      '6'
-    )
 
-    .replace(
-      /\|/g,
-      '1'
-    );
+            const candidates =
+              [];
+
+
+            for (
+
+              let i = 0;
+
+              i < variants.length;
+
+              i++
+
+            ) {
+
+
+              setOCRStatus(
+
+                true,
+
+                'Strict photo analysis...',
+
+                'Pass ' +
+                (i + 1) +
+                ' of ' +
+                variants.length
+
+              );
+
+
+              const result =
+
+                await worker.recognize(
+                  variants[i]
+                );
+
+
+              const text =
+
+                result &&
+                result.data
+
+                  ? result.data.text || ''
+
+                  : '';
+
+
+              candidates.push(
+
+                ...extractStrictMacCandidates(
+                  text
+                )
+
+              );
+
+
+            }
+
+
+            evaluateCharacterConsensus(
+              candidates
+            );
+
+
+          } catch (
+            error
+          ) {
+
+
+            rejectStrictScan(
+
+              'Photo OCR error: ' +
+              error.message
+
+            );
+
+
+          } finally {
+
+
+            ocrBusy =
+              false;
+
+
+          }
+
+
+        };
+
+
+      img.src =
+        e.target.result;
+
+
+    };
+
+
+  reader.readAsDataURL(
+    file
+  );
 
 }
 
@@ -3897,7 +3379,6 @@ function normalizeMac(
   }
 
 
-
   const clean =
 
     String(value)
@@ -3911,7 +3392,6 @@ function normalizeMac(
         ''
 
       );
-
 
 
   if (
@@ -3930,7 +3410,6 @@ function normalizeMac(
   }
 
 
-
   return formatMac(
     clean
   );
@@ -3946,11 +3425,11 @@ function normalizeMac(
  */
 
 function formatMac(
-  clean
+  compact
 ) {
 
 
-  return clean
+  return compact
 
     .match(
       /.{2}/g
@@ -3967,10 +3446,6 @@ function formatMac(
 /**
  * ==========================================================
  * MANUAL INPUT
- *
- * Manual entry is allowed to save,
- * but it is explicitly treated separately
- * from OCR confirmation.
  * ==========================================================
  */
 
@@ -3984,7 +3459,6 @@ function handleMacInput() {
     );
 
 
-
   if (
     !input
   ) {
@@ -3994,7 +3468,6 @@ function handleMacInput() {
 
 
   }
-
 
 
   let raw =
@@ -4012,7 +3485,6 @@ function handleMacInput() {
       );
 
 
-
   raw =
 
     raw.substring(
@@ -4021,10 +3493,8 @@ function handleMacInput() {
     );
 
 
-
   const groups =
     [];
-
 
 
   for (
@@ -4054,18 +3524,12 @@ function handleMacInput() {
   }
 
 
-
   input.value =
 
     groups.join(
       ':'
     );
 
-
-
-  /*
-   * An input event means a human has edited the field.
-   */
 
   macVerification = {
 
@@ -4078,7 +3542,7 @@ function handleMacInput() {
     confidence:
       'MANUAL',
 
-    votes:
+    details:
       '',
 
     mac:
@@ -4089,7 +3553,6 @@ function handleMacInput() {
   };
 
 
-
   validateMacUI();
 
 }
@@ -4098,7 +3561,7 @@ function handleMacInput() {
 
 /**
  * ==========================================================
- * VERIFIED OCR UI
+ * VERIFIED MAC UI
  * ==========================================================
  */
 
@@ -4126,13 +3589,11 @@ function updateVerifiedMacUI() {
     );
 
 
-
   const mac =
 
     normalizeMac(
       input.value
     );
-
 
 
   if (
@@ -4150,66 +3611,32 @@ function updateVerifiedMacUI() {
   }
 
 
-
   input.value =
     mac;
-
 
 
   setMacState(
 
     'valid',
 
-    'Confirmed MAC detected'
+    'STRICT VERIFIED'
 
   );
 
 
-
-  let status =
-
-    'Confirmed MAC Address';
-
-
-
-  if (
-    macVerification.confidence
-  ) {
-
-
-    status +=
-
-      ' • Confidence: ' +
-      macVerification.confidence;
-
-
-  }
-
-
-
-  if (
-    macVerification.votes
-  ) {
-
-
-    status +=
-
-      ' • Confirmed: ' +
-      macVerification.votes;
-
-
-  }
-
-
-
   validation.textContent =
-    status;
 
+    'Strict verification • ' +
+
+    macVerification.confidence +
+
+    ' • ' +
+
+    macVerification.details;
 
 
   validation.style.color =
     '#16864b';
-
 
 
   saveBtn.disabled =
@@ -4249,13 +3676,11 @@ function validateMacUI() {
     );
 
 
-
   const mac =
 
     normalizeMac(
       input.value
     );
-
 
 
   if (
@@ -4266,11 +3691,6 @@ function validateMacUI() {
     input.value =
       mac;
 
-
-
-    /*
-     * Confirmed OCR result.
-     */
 
     if (
       macVerification.confirmed
@@ -4286,11 +3706,6 @@ function validateMacUI() {
     }
 
 
-
-    /*
-     * Manual entry.
-     */
-
     if (
       macVerification.mode ===
       'manual'
@@ -4301,26 +3716,22 @@ function validateMacUI() {
 
         'valid',
 
-        'Manual MAC entry'
+        'VALID FORMAT'
 
       );
 
 
-
       validation.textContent =
 
-        'Valid MAC Address • Manual entry';
-
+        'Valid format • Manual entry';
 
 
       validation.style.color =
         '#16864b';
 
 
-
       saveBtn.disabled =
         false;
-
 
 
       return true;
@@ -4332,7 +3743,6 @@ function validateMacUI() {
   }
 
 
-
   if (
     !input.value
   ) {
@@ -4340,7 +3750,6 @@ function validateMacUI() {
 
     validation.textContent =
       '';
-
 
 
     setMacState(
@@ -4360,17 +3769,15 @@ function validateMacUI() {
       'Incomplete or invalid MAC Address';
 
 
-
     validation.style.color =
       '#d63b3b';
-
 
 
     setMacState(
 
       'invalid',
 
-      'Invalid MAC'
+      'INVALID FORMAT'
 
     );
 
@@ -4378,10 +3785,8 @@ function validateMacUI() {
   }
 
 
-
   saveBtn.disabled =
     true;
-
 
 
   return false;
@@ -4392,7 +3797,7 @@ function validateMacUI() {
 
 /**
  * ==========================================================
- * SAVE AND SCAN NEXT
+ * SAVE
  * ==========================================================
  */
 
@@ -4406,7 +3811,7 @@ function saveAndNext() {
 
     showMessage(
 
-      'Please enter or confirm a valid MAC Address.',
+      'Please enter or verify a valid MAC Address.',
 
       'error'
 
@@ -4419,7 +3824,6 @@ function saveAndNext() {
   }
 
 
-
   const btn =
 
     document.getElementById(
@@ -4427,27 +3831,21 @@ function saveAndNext() {
     );
 
 
-
   btn.disabled =
     true;
-
 
 
   btn.textContent =
     'SAVING...';
 
 
-
   const params = {
-
 
     api:
       'v11',
 
-
     action:
       'saveMac',
-
 
     mac:
 
@@ -4459,7 +3857,6 @@ function saveAndNext() {
 
         .value,
 
-
     device:
 
       document
@@ -4469,7 +3866,6 @@ function saveAndNext() {
         )
 
         .value,
-
 
     location:
 
@@ -4481,7 +3877,6 @@ function saveAndNext() {
 
         .value,
 
-
     note:
 
       document
@@ -4492,16 +3887,12 @@ function saveAndNext() {
 
         .value
 
-
   };
-
 
 
   apiRequest(
 
-
     params,
-
 
     function (
       result
@@ -4510,7 +3901,6 @@ function saveAndNext() {
 
       btn.textContent =
         'SAVE & SCAN NEXT';
-
 
 
       if (
@@ -4528,7 +3918,6 @@ function saveAndNext() {
           result.count;
 
 
-
         document
 
           .getElementById(
@@ -4537,7 +3926,6 @@ function saveAndNext() {
 
           .value =
           '';
-
 
 
         document
@@ -4550,13 +3938,10 @@ function saveAndNext() {
           '';
 
 
-
         resetVerification();
 
 
-
         validateMacUI();
-
 
 
         showMessage(
@@ -4569,13 +3954,10 @@ function saveAndNext() {
         );
 
 
-
         vibrateSuccess();
 
 
-
         loadDashboard();
-
 
 
         window.scrollTo({
@@ -4601,12 +3983,10 @@ function saveAndNext() {
           false;
 
 
-
         let message =
 
           'Duplicate: ' +
           result.mac;
-
 
 
         if (
@@ -4630,7 +4010,6 @@ function saveAndNext() {
         }
 
 
-
         if (
 
           result.existing &&
@@ -4652,7 +4031,6 @@ function saveAndNext() {
         }
 
 
-
         showMessage(
 
           message,
@@ -4667,7 +4045,6 @@ function saveAndNext() {
 
         btn.disabled =
           false;
-
 
 
         showMessage(
@@ -4686,7 +4063,6 @@ function saveAndNext() {
 
     },
 
-
     function () {
 
 
@@ -4694,13 +4070,11 @@ function saveAndNext() {
         'SAVE & SCAN NEXT';
 
 
-
       btn.disabled =
         false;
 
 
     }
-
 
   );
 
@@ -4719,7 +4093,6 @@ function loadDashboard() {
 
   apiRequest(
 
-
     {
 
       api:
@@ -4729,7 +4102,6 @@ function loadDashboard() {
         'dashboard'
 
     },
-
 
     function (
       data
@@ -4747,7 +4119,6 @@ function loadDashboard() {
       }
 
 
-
       document
 
         .getElementById(
@@ -4760,7 +4131,6 @@ function loadDashboard() {
         0;
 
 
-
       renderRecent(
 
         data.recent ||
@@ -4771,7 +4141,6 @@ function loadDashboard() {
 
     }
 
-
   );
 
 }
@@ -4780,7 +4149,7 @@ function loadDashboard() {
 
 /**
  * ==========================================================
- * JSONP API
+ * API REQUEST
  * ==========================================================
  */
 
@@ -4829,7 +4198,6 @@ function apiRequest(
   }
 
 
-
   const callbackName =
 
     '__macCallback_' +
@@ -4846,7 +4214,6 @@ function apiRequest(
     );
 
 
-
   const script =
 
     document.createElement(
@@ -4854,10 +4221,8 @@ function apiRequest(
     );
 
 
-
   let finished =
     false;
-
 
 
   const timeout =
@@ -4878,14 +4243,11 @@ function apiRequest(
         }
 
 
-
         finished =
           true;
 
 
-
         cleanup();
-
 
 
         showMessage(
@@ -4895,7 +4257,6 @@ function apiRequest(
           'error'
 
         );
-
 
 
         if (
@@ -4916,7 +4277,6 @@ function apiRequest(
     );
 
 
-
   function cleanup() {
 
 
@@ -4925,11 +4285,9 @@ function apiRequest(
     );
 
 
-
     delete window[
       callbackName
     ];
-
 
 
     if (
@@ -4948,7 +4306,6 @@ function apiRequest(
 
 
   }
-
 
 
   window[
@@ -4971,14 +4328,11 @@ function apiRequest(
       }
 
 
-
       finished =
         true;
 
 
-
       cleanup();
-
 
 
       if (
@@ -4997,10 +4351,8 @@ function apiRequest(
     };
 
 
-
   parameters.callback =
     callbackName;
-
 
 
   const query =
@@ -5010,7 +4362,6 @@ function apiRequest(
     );
 
 
-
   script.src =
 
     API_URL +
@@ -5018,7 +4369,6 @@ function apiRequest(
     '?' +
 
     query.toString();
-
 
 
   script.onerror =
@@ -5037,14 +4387,11 @@ function apiRequest(
       }
 
 
-
       finished =
         true;
 
 
-
       cleanup();
-
 
 
       showMessage(
@@ -5054,7 +4401,6 @@ function apiRequest(
         'error'
 
       );
-
 
 
       if (
@@ -5071,7 +4417,6 @@ function apiRequest(
     };
 
 
-
   document.body
     .appendChild(
       script
@@ -5083,7 +4428,7 @@ function apiRequest(
 
 /**
  * ==========================================================
- * RECENT SCANS
+ * RECENT
  * ==========================================================
  */
 
@@ -5097,7 +4442,6 @@ function renderRecent(
     document.getElementById(
       'recentList'
     );
-
 
 
   if (
@@ -5119,11 +4463,9 @@ function renderRecent(
       '</div>';
 
 
-
     return;
 
   }
-
 
 
   container.innerHTML =
@@ -5224,7 +4566,6 @@ function setOCRStatus(
     );
 
 
-
   if (
     !show
   ) {
@@ -5240,11 +4581,9 @@ function setOCRStatus(
   }
 
 
-
   box.classList.remove(
     'hidden'
   );
-
 
 
   document
@@ -5258,7 +4597,6 @@ function setOCRStatus(
     title ||
 
     'Reading...';
-
 
 
   document
@@ -5299,12 +4637,10 @@ function setMacState(
     );
 
 
-
   state.className =
 
     'macState ' +
     type;
-
 
 
   state.textContent =
@@ -5336,7 +4672,6 @@ function setSystemStatus(
     );
 
 
-
   status.innerHTML =
 
     '<span class="statusDot"></span>' +
@@ -5346,13 +4681,11 @@ function setSystemStatus(
     );
 
 
-
   const dot =
 
     status.querySelector(
       '.statusDot'
     );
-
 
 
   dot.style.background =
@@ -5389,10 +4722,8 @@ function showMessage(
     );
 
 
-
   box.className =
     'messageBox';
-
 
 
   if (
@@ -5432,16 +4763,13 @@ function showMessage(
   }
 
 
-
   box.textContent =
     message;
-
 
 
   box.classList.remove(
     'hidden'
   );
-
 
 
   setTimeout(
@@ -5456,7 +4784,7 @@ function showMessage(
 
     },
 
-    6500
+    7000
 
   );
 
@@ -5466,7 +4794,7 @@ function showMessage(
 
 /**
  * ==========================================================
- * HAPTIC FEEDBACK
+ * HAPTIC
  * ==========================================================
  */
 
@@ -5518,7 +4846,6 @@ function escapeHtml(
     return '';
 
   }
-
 
 
   return String(
