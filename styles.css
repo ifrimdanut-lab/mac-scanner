@@ -19,6 +19,8 @@
 
   --border: #dce3ea;
 
+  --guide: #39f78b;
+
 }
 
 
@@ -160,7 +162,7 @@ textarea {
 
   padding: 6px 9px;
 
-  font-size: 11px;
+  font-size: 10px;
 
   font-weight: 700;
 
@@ -294,6 +296,90 @@ textarea {
 }
 
 
+/* MODE */
+
+.modePanel {
+
+  padding: 12px;
+
+  margin-bottom: 14px;
+
+  background: #f6f9fb;
+
+  border: 1px solid var(--border);
+
+  border-radius: 10px;
+
+}
+
+
+.modeTitle {
+
+  margin-bottom: 8px;
+
+  font-size: 12px;
+
+  font-weight: 700;
+
+}
+
+
+.modeButtons {
+
+  display: grid;
+
+  grid-template-columns: 1fr 1fr;
+
+  gap: 8px;
+
+}
+
+
+.modeBtn {
+
+  min-height: 40px;
+
+  border: 1px solid var(--border);
+
+  border-radius: 8px;
+
+  background: white;
+
+  color: var(--text);
+
+  font-size: 12px;
+
+  font-weight: 800;
+
+  cursor: pointer;
+
+}
+
+
+.modeBtn.active {
+
+  background: var(--primary);
+
+  color: white;
+
+  border-color: var(--primary);
+
+}
+
+
+.modeHint {
+
+  margin-top: 8px;
+
+  color: var(--muted);
+
+  font-size: 11px;
+
+  line-height: 1.4;
+
+}
+
+
 /* CAMERA */
 
 .cameraSelectRow {
@@ -378,7 +464,7 @@ textarea {
 }
 
 
-/* SCAN OVERLAY */
+/* OVERLAY */
 
 .scanOverlay {
 
@@ -394,9 +480,9 @@ textarea {
 
   flex-direction: column;
 
-  align-items: center;
-
   justify-content: center;
+
+  align-items: center;
 
 }
 
@@ -405,9 +491,21 @@ textarea {
 
   position: relative;
 
-  width: 86%;
+  width: 88%;
+
+}
+
+
+.scanFrame.normalFrame {
 
   height: 42%;
+
+}
+
+
+.scanFrame.screenFrame {
+
+  height: 24%;
 
 }
 
@@ -416,13 +514,13 @@ textarea {
 
   position: absolute;
 
-  width: 28px;
+  width: 27px;
 
-  height: 28px;
+  height: 27px;
+
+  border-color: var(--guide);
 
   border-style: solid;
-
-  border-color: #39f78b;
 
 }
 
@@ -471,22 +569,60 @@ textarea {
 }
 
 
+.centerLine {
+
+  position: absolute;
+
+  top: 50%;
+
+  left: 3%;
+
+  width: 94%;
+
+  height: 1px;
+
+  background: rgba(57, 247, 139, .75);
+
+}
+
+
 .scanHint {
 
-  margin-top: 9px;
+  margin-top: 8px;
 
   padding: 4px 8px;
 
-  color: white;
+  background: rgba(0, 0, 0, .65);
 
-  background:
-    rgba(0, 0, 0, .6);
+  color: white;
 
   border-radius: 5px;
 
   font-size: 10px;
 
   font-weight: 800;
+
+}
+
+
+.scanExample {
+
+  margin-top: 6px;
+
+  padding: 3px 7px;
+
+  background: rgba(0, 0, 0, .6);
+
+  color: white;
+
+  border-radius: 5px;
+
+  font-family:
+    Consolas,
+    "Courier New",
+    monospace;
+
+  font-size: 11px;
 
 }
 
@@ -611,6 +747,36 @@ textarea {
 }
 
 
+/* SCREEN TIPS */
+
+.screenTips {
+
+  margin-top: 12px;
+
+  padding: 10px 12px;
+
+  background: #fff7e5;
+
+  border-radius: 9px;
+
+  color: #71521a;
+
+  font-size: 11px;
+
+  line-height: 1.45;
+
+}
+
+
+.screenTips strong {
+
+  display: block;
+
+  margin-bottom: 2px;
+
+}
+
+
 /* OCR */
 
 .ocrStatus {
@@ -678,7 +844,7 @@ textarea {
 }
 
 
-/* MAC STATE */
+/* MAC */
 
 .macState {
 
@@ -1010,8 +1176,7 @@ footer {
 
   .formGrid {
 
-    grid-template-columns:
-      1fr;
+    grid-template-columns: 1fr;
 
     gap: 0;
 
