@@ -1,11 +1,16 @@
 /**
  * ==========================================================
  * ICHC MAC Scanner
- * Version V1.3.0
+ * Version V1.3.1
  *
  * Instant Live MAC Scanner
  *
- * NEW:
+ * NEW V1.3.1:
+ * - Compact MAC result directly under camera
+ * - Large, highly visible detected MAC
+ * - No OCR engine changes
+ *
+ * V1.3 features preserved:
  * - Live camera OCR
  * - FAST PaddleOCR
  * - 2-frame confirmation
@@ -17,7 +22,7 @@
  */
 
 const APP_VERSION =
-  'V1.3.0';
+  'V1.3.1';
 
 
 /**
@@ -155,6 +160,9 @@ document.addEventListener(
     renderConnectionInfo();
 
 
+    createCompactMacResultUI();
+
+
     createLiveScanUI();
 
 
@@ -181,9 +189,445 @@ document.addEventListener(
 
 /**
  * ==========================================================
- * CREATE LIVE SCAN UI
+ * COMPACT MAC RESULT
  *
- * No index.html modification required.
+ * Immediately below camera.
+ * ==========================================================
+ */
+
+function createCompactMacResultUI() {
+
+  if (
+    document.getElementById(
+      'compactMacResult'
+    )
+  ) {
+
+    return;
+
+  }
+
+
+  const panel =
+    document.createElement(
+      'div'
+    );
+
+
+  panel.id =
+    'compactMacResult';
+
+
+  panel.style.marginTop =
+    '10px';
+
+
+  panel.style.marginBottom =
+    '10px';
+
+
+  panel.style.width =
+    '100%';
+
+
+  panel.style.boxSizing =
+    'border-box';
+
+
+  panel.innerHTML = `
+
+    <div
+      id="compactMacResultBox"
+      style="
+        width:100%;
+        box-sizing:border-box;
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:10px;
+        min-height:58px;
+        padding:12px 15px;
+        border:2px solid #dbe4ef;
+        border-radius:12px;
+        background:#ffffff;
+        transition:
+          border-color .2s ease,
+          background .2s ease,
+          box-shadow .2s ease;
+      "
+    >
+
+      <div
+        style="
+          min-width:0;
+          flex:1;
+        "
+      >
+
+        <div
+          style="
+            font-size:10px;
+            line-height:1;
+            font-weight:800;
+            letter-spacing:.8px;
+            color:#8997a8;
+            margin-bottom:6px;
+          "
+        >
+          MAC ADDRESS
+        </div>
+
+        <div
+          id="compactMacText"
+          style="
+            font-size:21px;
+            line-height:1.15;
+            font-weight:800;
+            color:#6f7f91;
+            letter-spacing:.3px;
+            white-space:nowrap;
+            overflow:hidden;
+            text-overflow:ellipsis;
+          "
+        >
+          Waiting for MAC...
+        </div>
+
+      </div>
+
+      <div
+        id="compactMacIcon"
+        style="
+          width:36px;
+          height:36px;
+          flex:0 0 36px;
+          border-radius:50%;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          background:#eef3f8;
+          color:#8c9bab;
+          font-size:19px;
+          font-weight:900;
+        "
+      >
+        …
+      </div>
+
+    </div>
+
+  `;
+
+
+  const camera =
+    document.getElementById(
+      'camera'
+    );
+
+
+  const scanFrame =
+    document.getElementById(
+      'scanFrame'
+    );
+
+
+  let cameraContainer =
+    null;
+
+
+  if (
+    scanFrame
+  ) {
+
+    cameraContainer =
+      scanFrame.parentElement;
+
+  }
+
+
+  if (
+    !cameraContainer &&
+    camera
+  ) {
+
+    cameraContainer =
+      camera.parentElement;
+
+  }
+
+
+  if (
+    !cameraContainer
+  ) {
+
+    return;
+
+  }
+
+
+  cameraContainer.insertAdjacentElement(
+    'afterend',
+    panel
+  );
+
+
+  updateCompactMacResult(
+    null,
+    'waiting'
+  );
+
+}
+
+
+/**
+ * ==========================================================
+ * UPDATE COMPACT MAC RESULT
+ * ==========================================================
+ */
+
+function updateCompactMacResult(
+  mac,
+  state = 'waiting'
+) {
+
+  const box =
+    document.getElementById(
+      'compactMacResultBox'
+    );
+
+
+  const text =
+    document.getElementById(
+      'compactMacText'
+    );
+
+
+  const icon =
+    document.getElementById(
+      'compactMacIcon'
+    );
+
+
+  if (
+    !box ||
+    !text ||
+    !icon
+  ) {
+
+    return;
+
+  }
+
+
+  if (
+    state ===
+    'detected'
+  ) {
+
+    text.textContent =
+      mac ||
+      'MAC detected';
+
+
+    text.style.color =
+      '#0878ff';
+
+
+    box.style.borderColor =
+      '#0878ff';
+
+
+    box.style.background =
+      '#f5faff';
+
+
+    box.style.boxShadow =
+      '0 3px 14px rgba(8,120,255,.10)';
+
+
+    icon.textContent =
+      '✓';
+
+
+    icon.style.background =
+      '#e5f7ed';
+
+
+    icon.style.color =
+      '#16864b';
+
+
+    return;
+
+  }
+
+
+  if (
+    state ===
+    'confirmed'
+  ) {
+
+    text.textContent =
+      mac ||
+      'MAC confirmed';
+
+
+    text.style.color =
+      '#16864b';
+
+
+    box.style.borderColor =
+      '#58c98a';
+
+
+    box.style.background =
+      '#f3fcf7';
+
+
+    box.style.boxShadow =
+      '0 3px 14px rgba(22,134,75,.10)';
+
+
+    icon.textContent =
+      '✓';
+
+
+    icon.style.background =
+      '#dff6e9';
+
+
+    icon.style.color =
+      '#16864b';
+
+
+    return;
+
+  }
+
+
+  if (
+    state ===
+    'scanning'
+  ) {
+
+    text.textContent =
+      mac ||
+      'Scanning...';
+
+
+    text.style.color =
+      '#0878ff';
+
+
+    box.style.borderColor =
+      '#8dc3ff';
+
+
+    box.style.background =
+      '#f8fbff';
+
+
+    box.style.boxShadow =
+      'none';
+
+
+    icon.textContent =
+      '⌁';
+
+
+    icon.style.background =
+      '#eaf4ff';
+
+
+    icon.style.color =
+      '#0878ff';
+
+
+    return;
+
+  }
+
+
+  if (
+    state ===
+    'error'
+  ) {
+
+    text.textContent =
+      mac ||
+      'MAC not found';
+
+
+    text.style.color =
+      '#d63b3b';
+
+
+    box.style.borderColor =
+      '#efb2b2';
+
+
+    box.style.background =
+      '#fff8f8';
+
+
+    box.style.boxShadow =
+      'none';
+
+
+    icon.textContent =
+      '!';
+
+
+    icon.style.background =
+      '#fde7e7';
+
+
+    icon.style.color =
+      '#d63b3b';
+
+
+    return;
+
+  }
+
+
+  text.textContent =
+    'Waiting for MAC...';
+
+
+  text.style.color =
+    '#6f7f91';
+
+
+  box.style.borderColor =
+    '#dbe4ef';
+
+
+  box.style.background =
+    '#ffffff';
+
+
+  box.style.boxShadow =
+    'none';
+
+
+  icon.textContent =
+    '…';
+
+
+  icon.style.background =
+    '#eef3f8';
+
+
+  icon.style.color =
+    '#8c9bab';
+
+}
+
+
+/**
+ * ==========================================================
+ * CREATE LIVE SCAN UI
  * ==========================================================
  */
 
@@ -226,11 +670,11 @@ function createLiveScanUI() {
 
 
   panel.style.marginTop =
-    '14px';
+    '12px';
 
 
   panel.style.padding =
-    '14px';
+    '12px';
 
 
   panel.style.border =
@@ -249,7 +693,7 @@ function createLiveScanUI() {
 
     <div
       style="
-        font-size:12px;
+        font-size:11px;
         font-weight:800;
         letter-spacing:.7px;
         color:#526273;
@@ -265,7 +709,7 @@ function createLiveScanUI() {
       onclick="toggleLiveScan()"
       style="
         width:100%;
-        min-height:48px;
+        min-height:44px;
         border:0;
         border-radius:9px;
         background:#0878ff;
@@ -278,25 +722,36 @@ function createLiveScanUI() {
     </button>
 
     <div
-      id="liveScanStatus"
       style="
-        margin-top:10px;
-        font-size:13px;
-        color:#526273;
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:10px;
+        margin-top:8px;
       "
     >
-      Status: READY
-    </div>
 
-    <div
-      id="liveConsensus"
-      style="
-        margin-top:4px;
-        font-size:12px;
-        color:#738398;
-      "
-    >
-      Consensus: 0 / ${LIVE_CONFIRMATION_COUNT}
+      <div
+        id="liveScanStatus"
+        style="
+          font-size:12px;
+          color:#526273;
+        "
+      >
+        READY
+      </div>
+
+      <div
+        id="liveConsensus"
+        style="
+          font-size:11px;
+          color:#738398;
+          white-space:nowrap;
+        "
+      >
+        0 / ${LIVE_CONFIRMATION_COUNT}
+      </div>
+
     </div>
 
   `;
@@ -587,12 +1042,15 @@ async function checkOCRServer() {
 
   const timeout =
     setTimeout(
+
       function () {
 
         controller.abort();
 
       },
+
       10000
+
     );
 
 
@@ -600,8 +1058,11 @@ async function checkOCRServer() {
 
     const response =
       await fetch(
+
         healthURL,
+
         {
+
           method:
             'GET',
 
@@ -610,7 +1071,9 @@ async function checkOCRServer() {
 
           signal:
             controller.signal
+
         }
+
       );
 
 
@@ -647,7 +1110,9 @@ async function checkOCRServer() {
     ) {
 
       setOCRServerState(
+
         true,
+
         'PaddleOCR online • ' +
         (
           data.version ||
@@ -656,7 +1121,9 @@ async function checkOCRServer() {
         ' • ' +
         latency +
         ' ms'
+
       );
+
 
     } else {
 
@@ -692,9 +1159,12 @@ async function checkOCRServer() {
 
 
     setOCRServerState(
+
       false,
+
       'OCR server offline • ' +
       message
+
     );
 
   }
@@ -736,9 +1206,11 @@ function setOCRServerState(
 
 
     panel.classList.add(
+
       online
         ? 'serverOnline'
         : 'serverOffline'
+
     );
 
   }
@@ -755,10 +1227,13 @@ function setOCRServerState(
 
 
   setSystemStatus(
+
     online
       ? 'OCR ready'
       : 'OCR offline',
+
     online
+
   );
 
 
@@ -802,8 +1277,11 @@ async function toggleLiveScan() {
   ) {
 
     showMessage(
+
       'Camera could not be started.',
+
       'error'
+
     );
 
     return;
@@ -849,6 +1327,12 @@ function startLiveScan() {
     0;
 
 
+  updateCompactMacResult(
+    null,
+    'scanning'
+  );
+
+
   const button =
     document.getElementById(
       'liveScanBtn'
@@ -870,8 +1354,11 @@ function startLiveScan() {
 
 
   updateLiveStatus(
+
     'SCANNING...',
+
     0
+
   );
 
 
@@ -917,8 +1404,11 @@ async function runLiveScanCycle() {
 
   liveScanTimer =
     setTimeout(
+
       runLiveScanCycle,
+
       LIVE_SCAN_INTERVAL_MS
+
     );
 
 }
@@ -963,8 +1453,11 @@ async function performLiveOCR() {
 
     const blob =
       await canvasToBlob(
+
         canvas,
+
         LIVE_JPEG_QUALITY
+
       );
 
 
@@ -973,15 +1466,22 @@ async function performLiveOCR() {
 
 
     form.append(
+
       'image',
+
       blob,
+
       'live-scan.jpg'
+
     );
 
 
     form.append(
+
       'mode',
+
       'fast'
+
     );
 
 
@@ -991,10 +1491,13 @@ async function performLiveOCR() {
 
     const response =
       await fetch(
+
         getOCREndpoint(
           'ocr'
         ),
+
         {
+
           method:
             'POST',
 
@@ -1003,7 +1506,9 @@ async function performLiveOCR() {
 
           cache:
             'no-store'
+
         }
+
       );
 
 
@@ -1013,8 +1518,10 @@ async function performLiveOCR() {
 
     const roundTrip =
       Math.round(
+
         performance.now() -
         started
+
       );
 
 
@@ -1024,8 +1531,10 @@ async function performLiveOCR() {
     ) {
 
       throw new Error(
+
         result.message ||
         'OCR failed'
+
       );
 
     }
@@ -1034,7 +1543,8 @@ async function performLiveOCR() {
     if (
       !result.found ||
       !result.candidates ||
-      result.candidates.length === 0
+      result.candidates.length ===
+      0
     ) {
 
       liveCandidateMac =
@@ -1046,10 +1556,22 @@ async function performLiveOCR() {
 
 
       updateLiveStatus(
+
         'Scanning • ' +
         roundTrip +
         ' ms',
+
         0
+
+      );
+
+
+      updateCompactMacResult(
+
+        null,
+
+        'scanning'
+
       );
 
 
@@ -1060,7 +1582,9 @@ async function performLiveOCR() {
 
     const mac =
       normalizeMac(
+
         result.candidates[0].mac
+
       );
 
 
@@ -1093,12 +1617,24 @@ async function performLiveOCR() {
     }
 
 
+    updateCompactMacResult(
+
+      mac,
+
+      'detected'
+
+    );
+
+
     updateLiveStatus(
+
       mac +
       ' • ' +
       roundTrip +
       ' ms',
+
       liveCandidateCount
+
     );
 
 
@@ -1108,8 +1644,11 @@ async function performLiveOCR() {
     ) {
 
       completeLiveDetection(
+
         mac,
+
         result
+
       );
 
     }
@@ -1126,8 +1665,20 @@ async function performLiveOCR() {
 
 
     updateLiveStatus(
+
       'Connection error',
+
       0
+
+    );
+
+
+    updateCompactMacResult(
+
+      'Connection error',
+
+      'error'
+
     );
 
 
@@ -1144,8 +1695,6 @@ async function performLiveOCR() {
 /**
  * ==========================================================
  * LIVE FRAME CAPTURE
- *
- * Uses only the central scan zone.
  * ==========================================================
  */
 
@@ -1165,11 +1714,14 @@ function captureLiveFrame() {
 
   const context =
     canvas.getContext(
+
       '2d',
+
       {
         willReadFrequently:
           true
       }
+
     );
 
 
@@ -1198,6 +1750,7 @@ function captureLiveFrame() {
       sourceHeight *
       0.26;
 
+
   } else {
 
     cropHeight =
@@ -1223,10 +1776,13 @@ function captureLiveFrame() {
 
   let outputWidth =
     Math.min(
+
       LIVE_CAPTURE_MAX_WIDTH,
+
       Math.round(
         cropWidth
       )
+
     );
 
 
@@ -1237,11 +1793,16 @@ function captureLiveFrame() {
 
   let outputHeight =
     Math.max(
+
       120,
+
       Math.round(
+
         cropHeight *
         ratio
+
       )
+
     );
 
 
@@ -1262,17 +1823,21 @@ function captureLiveFrame() {
 
 
   context.drawImage(
+
     video,
 
     startX,
     startY,
+
     cropWidth,
     cropHeight,
 
     0,
     0,
+
     outputWidth,
     outputHeight
+
   );
 
 
@@ -1302,6 +1867,15 @@ function completeLiveDetection(
   );
 
 
+  updateCompactMacResult(
+
+    mac,
+
+    'detected'
+
+  );
+
+
   const validation =
     document.getElementById(
       'macValidation'
@@ -1323,12 +1897,16 @@ function completeLiveDetection(
 
 
   updateLiveStatus(
+
     '✓ MAC DETECTED',
+
     LIVE_CONFIRMATION_COUNT
+
   );
 
 
   showMessage(
+
     'MAC detected: ' +
     mac +
     ' • ' +
@@ -1337,7 +1915,9 @@ function completeLiveDetection(
       '?'
     ) +
     ' s OCR',
+
     'success'
+
   );
 
 }
@@ -1397,9 +1977,31 @@ function stopLiveScan(
   ) {
 
     updateLiveStatus(
+
       'READY',
+
       0
+
     );
+
+
+    if (
+      !document
+        .getElementById(
+          'macInput'
+        )
+        ?.value
+    ) {
+
+      updateCompactMacResult(
+
+        null,
+
+        'waiting'
+
+      );
+
+    }
 
   }
 
@@ -1434,7 +2036,6 @@ function updateLiveStatus(
   ) {
 
     status.textContent =
-      'Status: ' +
       text;
 
   }
@@ -1445,12 +2046,17 @@ function updateLiveStatus(
   ) {
 
     consensus.textContent =
-      'Consensus: ' +
+
       Math.min(
+
         count,
+
         LIVE_CONFIRMATION_COUNT
+
       ) +
+
       ' / ' +
+
       LIVE_CONFIRMATION_COUNT;
 
   }
@@ -1622,8 +2228,11 @@ async function discoverCameras() {
   ) {
 
     showMessage(
+
       'Camera is not supported by this browser.',
+
       'error'
+
     );
 
     return;
@@ -1634,11 +2243,14 @@ async function discoverCameras() {
   try {
 
     const devices =
-      await navigator.mediaDevices.enumerateDevices();
+      await navigator
+        .mediaDevices
+        .enumerateDevices();
 
 
     videoDevices =
       devices.filter(
+
         function (
           device
         ) {
@@ -1649,6 +2261,7 @@ async function discoverCameras() {
           );
 
         }
+
       );
 
 
@@ -1660,8 +2273,11 @@ async function discoverCameras() {
   ) {
 
     console.error(
+
       'Camera discovery error:',
+
       error
+
     );
 
   }
@@ -1718,6 +2334,7 @@ function populateCameraList() {
 
 
   videoDevices.forEach(
+
     function (
       device,
       index
@@ -1734,7 +2351,9 @@ function populateCameraList() {
 
 
       option.textContent =
+
         device.label ||
+
         (
           'Camera ' +
           (
@@ -1748,6 +2367,7 @@ function populateCameraList() {
       );
 
     }
+
   );
 
 
@@ -1794,39 +2414,52 @@ async function startCamera(
       constraints = {
 
         deviceId: {
+
           exact:
             requestedDeviceId
+
         },
 
         width: {
+
           ideal:
             1920
+
         },
 
         height: {
+
           ideal:
             1080
+
         }
 
       };
+
 
     } else {
 
       constraints = {
 
         facingMode: {
+
           ideal:
             'environment'
+
         },
 
         width: {
+
           ideal:
             1920
+
         },
 
         height: {
+
           ideal:
             1080
+
         }
 
       };
@@ -1835,15 +2468,17 @@ async function startCamera(
 
 
     cameraStream =
-      await navigator.mediaDevices.getUserMedia(
-        {
+      await navigator
+        .mediaDevices
+        .getUserMedia({
+
           video:
             constraints,
 
           audio:
             false
-        }
-      );
+
+        });
 
 
     video.srcObject =
@@ -1943,15 +2578,21 @@ async function startCamera(
   ) {
 
     console.error(
+
       'Camera error:',
+
       error
+
     );
 
 
     showMessage(
+
       'Camera could not be started: ' +
       error.message,
+
       'error'
+
     );
 
   }
@@ -1979,6 +2620,7 @@ function stopCamera() {
   cameraStream
     .getTracks()
     .forEach(
+
       function (
         track
       ) {
@@ -1986,6 +2628,7 @@ function stopCamera() {
         track.stop();
 
       }
+
     );
 
 
@@ -2055,8 +2698,11 @@ async function switchCamera() {
   ) {
 
     showMessage(
+
       'Only one camera is available.',
+
       'warning'
+
     );
 
     return;
@@ -2066,6 +2712,7 @@ async function switchCamera() {
 
   let index =
     videoDevices.findIndex(
+
       function (
         device
       ) {
@@ -2076,6 +2723,7 @@ async function switchCamera() {
         );
 
       }
+
     );
 
 
@@ -2094,9 +2742,11 @@ async function switchCamera() {
 
 
   await startCamera(
+
     videoDevices[
       index
     ].deviceId
+
   );
 
 }
@@ -2168,30 +2818,38 @@ function captureCameraFrame() {
 
   canvas.width =
     Math.round(
+
       cropWidth *
       scale
+
     );
 
 
   canvas.height =
     Math.round(
+
       cropHeight *
       scale
+
     );
 
 
   context.drawImage(
+
     video,
 
     startX,
     startY,
+
     cropWidth,
     cropHeight,
 
     0,
     0,
+
     canvas.width,
     canvas.height
+
   );
 
 
@@ -2203,8 +2861,6 @@ function captureCameraFrame() {
 /**
  * ==========================================================
  * MANUAL SCAN
- *
- * Manual scan uses ACCURATE mode.
  * ==========================================================
  */
 
@@ -2231,8 +2887,11 @@ async function scanMac() {
   ) {
 
     showMessage(
+
       'Camera is not ready.',
+
       'warning'
+
     );
 
     return;
@@ -2245,13 +2904,25 @@ async function scanMac() {
   );
 
 
+  updateCompactMacResult(
+
+    null,
+
+    'scanning'
+
+  );
+
+
   const canvas =
     captureCameraFrame();
 
 
   await sendCanvasToOCR(
+
     canvas,
+
     'accurate'
+
   );
 
 }
@@ -2285,11 +2956,21 @@ function scanUploadedPhoto(
   );
 
 
+  updateCompactMacResult(
+
+    null,
+
+    'scanning'
+
+  );
+
+
   const reader =
     new FileReader();
 
 
   reader.onload =
+
     function (
       data
     ) {
@@ -2299,6 +2980,7 @@ function scanUploadedPhoto(
 
 
       image.onload =
+
         async function () {
 
           const canvas =
@@ -2326,11 +3008,13 @@ function scanUploadedPhoto(
 
 
           if (
+
             Math.max(
               width,
               height
             ) >
             max
+
           ) {
 
             const ratio =
@@ -2366,17 +3050,24 @@ function scanUploadedPhoto(
 
 
           context.drawImage(
+
             image,
+
             0,
             0,
+
             width,
             height
+
           );
 
 
           await sendCanvasToOCR(
+
             canvas,
+
             'accurate'
+
           );
 
         };
@@ -2414,12 +3105,16 @@ async function sendCanvasToOCR(
 
 
   setOCRStatus(
+
     true,
+
     'PaddleOCR is reading...',
+
     mode ===
     'fast'
       ? 'FAST OCR'
       : 'ACCURATE OCR'
+
   );
 
 
@@ -2427,8 +3122,11 @@ async function sendCanvasToOCR(
 
     const blob =
       await canvasToBlob(
+
         canvas,
+
         0.9
+
       );
 
 
@@ -2437,24 +3135,34 @@ async function sendCanvasToOCR(
 
 
     form.append(
+
       'image',
+
       blob,
+
       'mac-scan.jpg'
+
     );
 
 
     form.append(
+
       'mode',
+
       mode
+
     );
 
 
     const response =
       await fetch(
+
         getOCREndpoint(
           'ocr'
         ),
+
         {
+
           method:
             'POST',
 
@@ -2463,7 +3171,9 @@ async function sendCanvasToOCR(
 
           cache:
             'no-store'
+
         }
+
       );
 
 
@@ -2477,8 +3187,10 @@ async function sendCanvasToOCR(
     ) {
 
       throw new Error(
+
         result.message ||
         'OCR failed'
+
       );
 
     }
@@ -2498,10 +3210,22 @@ async function sendCanvasToOCR(
     );
 
 
+    updateCompactMacResult(
+
+      'OCR error',
+
+      'error'
+
+    );
+
+
     showMessage(
+
       'PaddleOCR error: ' +
       error.message,
+
       'error'
+
     );
 
 
@@ -2532,12 +3256,14 @@ function canvasToBlob(
 ) {
 
   return new Promise(
+
     function (
       resolve,
       reject
     ) {
 
       canvas.toBlob(
+
         function (
           blob
         ) {
@@ -2550,22 +3276,29 @@ function canvasToBlob(
               blob
             );
 
+
           } else {
 
             reject(
+
               new Error(
                 'Could not create image.'
               )
+
             );
 
           }
 
         },
+
         'image/jpeg',
+
         quality
+
       );
 
     }
+
   );
 
 }
@@ -2589,14 +3322,29 @@ function handleOCRResult(
   ) {
 
     setMacState(
+
       'invalid',
+
       'MAC NOT FOUND'
+
+    );
+
+
+    updateCompactMacResult(
+
+      'MAC not found',
+
+      'error'
+
     );
 
 
     showMessage(
+
       'No MAC detected.',
+
       'warning'
+
     );
 
 
@@ -2610,12 +3358,26 @@ function handleOCRResult(
   );
 
 
+  const mac =
+    result.candidates[0].mac;
+
+
+  updateCompactMacResult(
+
+    mac,
+
+    'detected'
+
+  );
+
+
   selectCandidate(
-    result.candidates[0].mac
+    mac
   );
 
 
   showMessage(
+
     'MAC detected in ' +
     result.processingSeconds +
     ' s • ' +
@@ -2623,7 +3385,9 @@ function handleOCRResult(
       result.mode ||
       ''
     ).toUpperCase(),
+
     'success'
+
   );
 
 }
@@ -2666,6 +3430,7 @@ function renderCandidates(
 
 
   candidates.forEach(
+
     function (
       candidate
     ) {
@@ -2681,10 +3446,13 @@ function renderCandidates(
 
 
       button.innerHTML =
+
         escapeHtml(
           candidate.mac
         ) +
+
         '<small>' +
+
         escapeHtml(
           (
             candidate.votes ||
@@ -2692,14 +3460,25 @@ function renderCandidates(
           ) +
           ' OCR reading(s)'
         ) +
+
         '</small>';
 
 
       button.onclick =
+
         function () {
 
           selectCandidate(
             candidate.mac
+          );
+
+
+          updateCompactMacResult(
+
+            candidate.mac,
+
+            'detected'
+
           );
 
         };
@@ -2710,6 +3489,7 @@ function renderCandidates(
       );
 
     }
+
   );
 
 
@@ -2761,13 +3541,25 @@ function selectCandidate(
   }
 
 
+  updateCompactMacResult(
+
+    normalized,
+
+    'detected'
+
+  );
+
+
   macConfirmed =
     false;
 
 
   setMacState(
+
     'candidate',
+
     'OCR CANDIDATE'
+
   );
 
 
@@ -2853,10 +3645,12 @@ function handleMacInput() {
   ) {
 
     groups.push(
+
       clean.substring(
         i,
         i + 2
       )
+
     );
 
   }
@@ -2894,9 +3688,21 @@ function handleMacInput() {
     mac
   ) {
 
+    updateCompactMacResult(
+
+      mac,
+
+      'detected'
+
+    );
+
+
     setMacState(
+
       'candidate',
+
       'VERIFY MAC'
+
     );
 
 
@@ -2944,7 +3750,34 @@ function handleMacInput() {
     }
 
 
+    if (
+      input.value
+    ) {
+
+      updateCompactMacResult(
+
+        input.value,
+
+        'error'
+
+      );
+
+
+    } else {
+
+      updateCompactMacResult(
+
+        null,
+
+        'waiting'
+
+      );
+
+    }
+
+
     setMacState(
+
       input.value
         ? 'invalid'
         : 'waiting',
@@ -2952,6 +3785,7 @@ function handleMacInput() {
       input.value
         ? 'INVALID MAC'
         : 'Waiting for scan'
+
     );
 
   }
@@ -2975,9 +3809,11 @@ function confirmMac() {
 
   const mac =
     normalizeMac(
+
       input
         ? input.value
         : ''
+
     );
 
 
@@ -2986,8 +3822,11 @@ function confirmMac() {
   ) {
 
     showMessage(
+
       'Invalid MAC Address.',
+
       'error'
+
     );
 
     return;
@@ -3003,9 +3842,21 @@ function confirmMac() {
     true;
 
 
+  updateCompactMacResult(
+
+    mac,
+
+    'confirmed'
+
+  );
+
+
   setMacState(
+
     'valid',
+
     'CONFIRMED'
+
   );
 
 
@@ -3043,9 +3894,12 @@ function confirmMac() {
 
 
   showMessage(
+
     'MAC confirmed: ' +
     mac,
+
     'success'
+
   );
 
 }
@@ -3195,9 +4049,21 @@ function resetMacState() {
   }
 
 
+  updateCompactMacResult(
+
+    null,
+
+    'waiting'
+
+  );
+
+
   setMacState(
+
     'waiting',
+
     'Waiting for scan'
+
   );
 
 }
@@ -3216,8 +4082,11 @@ function saveAndNext() {
   ) {
 
     showMessage(
+
       'Confirm the MAC Address first.',
+
       'warning'
+
     );
 
     return;
@@ -3227,11 +4096,13 @@ function saveAndNext() {
 
   const mac =
     normalizeMac(
+
       document
         .getElementById(
           'macInput'
         )
         .value
+
     );
 
 
@@ -3265,7 +4136,9 @@ function saveAndNext() {
 
 
   apiRequest(
+
     {
+
       api:
         'v11',
 
@@ -3295,6 +4168,7 @@ function saveAndNext() {
             'note'
           )
           .value
+
     },
 
     function (
@@ -3322,9 +4196,12 @@ function saveAndNext() {
 
 
         showMessage(
+
           'Saved: ' +
           result.mac,
+
           'success'
+
         );
 
 
@@ -3341,14 +4218,44 @@ function saveAndNext() {
 
 
         showMessage(
+
           result.message ||
           'Save failed.',
+
           'error'
+
         );
 
       }
 
+    },
+
+    function () {
+
+      if (
+        button
+      ) {
+
+        button.textContent =
+          'SAVE & SCAN NEXT';
+
+
+        button.disabled =
+          false;
+
+      }
+
+
+      showMessage(
+
+        'Could not connect to Google Apps Script.',
+
+        'error'
+
+      );
+
     }
+
   );
 
 }
@@ -3363,12 +4270,15 @@ function saveAndNext() {
 function loadDashboard() {
 
   apiRequest(
+
     {
+
       api:
         'v11',
 
       action:
         'dashboard'
+
     },
 
     function (
@@ -3407,6 +4317,7 @@ function loadDashboard() {
       );
 
     }
+
   );
 
 }
@@ -3425,9 +4336,13 @@ function apiRequest(
 ) {
 
   const callbackName =
+
     '__macCallback_' +
+
     Date.now() +
+
     '_' +
+
     Math.floor(
       Math.random() *
       100000
@@ -3446,6 +4361,7 @@ function apiRequest(
 
   const timeout =
     setTimeout(
+
       function () {
 
         if (
@@ -3473,7 +4389,9 @@ function apiRequest(
         }
 
       },
+
       15000
+
     );
 
 
@@ -3505,6 +4423,7 @@ function apiRequest(
   window[
     callbackName
   ] =
+
     function (
       data
     ) {
@@ -3543,14 +4462,18 @@ function apiRequest(
 
 
   script.src =
+
     GOOGLE_API_URL +
+
     '?' +
+
     new URLSearchParams(
       parameters
     ).toString();
 
 
   script.onerror =
+
     function () {
 
       if (
@@ -3618,8 +4541,11 @@ function renderRecent(
   ) {
 
     container.innerHTML =
+
       '<div class="emptyState">' +
+
       'No devices registered yet.' +
+
       '</div>';
 
 
@@ -3629,8 +4555,10 @@ function renderRecent(
 
 
   container.innerHTML =
+
     items
       .map(
+
         function (
           item
         ) {
@@ -3686,6 +4614,7 @@ function renderRecent(
           `;
 
         }
+
       )
       .join('');
 
@@ -3792,6 +4721,7 @@ function setMacState(
 
 
   state.className =
+
     'macState ' +
     type;
 
@@ -3823,7 +4753,9 @@ function setSystemStatus(
 
 
   status.innerHTML =
+
     '<span class="statusDot"></span>' +
+
     escapeHtml(
       text
     );
@@ -3840,6 +4772,7 @@ function setSystemStatus(
   ) {
 
     dot.style.background =
+
       ready
         ? '#4cea92'
         : '#ff7474';
@@ -3888,6 +4821,7 @@ function showMessage(
       'messageSuccess'
     );
 
+
   } else if (
     type ===
     'warning'
@@ -3896,6 +4830,7 @@ function showMessage(
     box.classList.add(
       'messageWarning'
     );
+
 
   } else {
 
@@ -3916,6 +4851,7 @@ function showMessage(
 
 
   setTimeout(
+
     function () {
 
       box.classList.add(
@@ -3923,7 +4859,9 @@ function showMessage(
       );
 
     },
+
     5000
+
   );
 
 }
@@ -3979,7 +4917,9 @@ function escapeHtml(
  */
 
 window.addEventListener(
+
   'beforeunload',
+
   function () {
 
     stopLiveScan(
@@ -3990,4 +4930,5 @@ window.addEventListener(
     stopCamera();
 
   }
+
 );
