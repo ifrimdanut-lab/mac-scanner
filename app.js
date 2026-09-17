@@ -1,7 +1,7 @@
 /**
  * ==========================================================
  * ICHC MAC Scanner
- * Version V1.3.2.2
+ * Version V1.3.2.3
  *
  * LAYOUT:
  * 1. LIVE MAC SCAN
@@ -15,7 +15,7 @@
  * ==========================================================
  */
 
-const APP_VERSION = 'V1.3.2.2';
+const APP_VERSION = 'V1.3.2.3';
 
 
 /* ==========================================================
@@ -23,7 +23,7 @@ const APP_VERSION = 'V1.3.2.2';
 ========================================================== */
 
 const GOOGLE_API_URL =
-  'https://script.google.com/macros/s/AKfycby-tRmhkTfmpB3mnvbmsrMB5zcQodmBugNNBaLA-k4R_xn4q44jOPYEEirHP7ykoMDntg/exec';
+  'https://script.google.com/a/macros/ichc.ro/s/AKfycbymTgShnoA9obZCt3lse6UzGnbYk26skD9CgxJPciPnsUKr7AQ0OlL72PJLUSkvZ3U7iQ/exec';
 
 
 const OCR_CONNECTION_NAME =
@@ -163,7 +163,7 @@ document.addEventListener(
 
 
 /* ==========================================================
-   V1.3.2.2 - EXACT LAYOUT REORDER
+   V1.3.2.3 - EXACT LAYOUT REORDER
 ========================================================== */
 
 function reorderApplicationLayout() {
@@ -171,6 +171,8 @@ function reorderApplicationLayout() {
   arrangePrimaryScannerFlow();
 
   movePaddleOCRSectionToBottom();
+
+  moveRecentScansSectionToBottom();
 }
 
 
@@ -683,6 +685,45 @@ function movePaddleOCRSectionToBottom() {
 
 
   paddleCard.style.marginBottom =
+    '20px';
+}
+
+
+/* ==========================================================
+   RECENT SCANS -> LAST
+========================================================== */
+
+function moveRecentScansSectionToBottom() {
+
+  const recentCard =
+    findSectionByHeadingText(
+      'Recent Scans'
+    );
+
+
+  if (
+    !recentCard ||
+    !recentCard.parentElement
+  ) {
+
+    console.warn(
+      'V1.3.2.3: Recent Scans section not found.'
+    );
+
+    return;
+  }
+
+
+  recentCard.parentElement.appendChild(
+    recentCard
+  );
+
+
+  recentCard.style.marginTop =
+    '20px';
+
+
+  recentCard.style.marginBottom =
     '20px';
 }
 
