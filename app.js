@@ -1,7 +1,7 @@
 /**
  * ==========================================================
  * ICHC MAC Scanner
- * Version V1.3.2.5
+ * Version V1.3.2.2
  *
  * LAYOUT:
  * 1. LIVE MAC SCAN
@@ -15,7 +15,7 @@
  * ==========================================================
  */
 
-const APP_VERSION = 'V1.3.2.5';
+const APP_VERSION = 'V1.3.2.2';
 
 
 /* ==========================================================
@@ -23,7 +23,7 @@ const APP_VERSION = 'V1.3.2.5';
 ========================================================== */
 
 const GOOGLE_API_URL =
-  'https://script.google.com/macros/s/AKfycbymTgShnoA9obZCt3lse6UzGnbYk26skD9CgxJPciPnsUKr7AQ0OlL72PJLUSkvZ3U7iQ/exec';
+  'https://script.google.com/macros/s/AKfycby-tRmhkTfmpB3mnvbmsrMB5zcQodmBugNNBaLA-k4R_xn4q44jOPYEEirHP7ykoMDntg/exec';
 
 
 const OCR_CONNECTION_NAME =
@@ -163,7 +163,7 @@ document.addEventListener(
 
 
 /* ==========================================================
-   V1.3.2.5 - EXACT LAYOUT REORDER
+   V1.3.2.2 - EXACT LAYOUT REORDER
 ========================================================== */
 
 function reorderApplicationLayout() {
@@ -171,8 +171,6 @@ function reorderApplicationLayout() {
   arrangePrimaryScannerFlow();
 
   movePaddleOCRSectionToBottom();
-
-  moveRecentScansSectionToBottom();
 }
 
 
@@ -685,45 +683,6 @@ function movePaddleOCRSectionToBottom() {
 
 
   paddleCard.style.marginBottom =
-    '20px';
-}
-
-
-/* ==========================================================
-   RECENT SCANS -> LAST
-========================================================== */
-
-function moveRecentScansSectionToBottom() {
-
-  const recentCard =
-    findSectionByHeadingText(
-      'Recent Scans'
-    );
-
-
-  if (
-    !recentCard ||
-    !recentCard.parentElement
-  ) {
-
-    console.warn(
-      'V1.3.2.3: Recent Scans section not found.'
-    );
-
-    return;
-  }
-
-
-  recentCard.parentElement.appendChild(
-    recentCard
-  );
-
-
-  recentCard.style.marginTop =
-    '20px';
-
-
-  recentCard.style.marginBottom =
     '20px';
 }
 
@@ -4159,9 +4118,10 @@ function saveAndNext() {
         loadDashboard();
 
 
-        showSaveSuccess(
+        showMessage(
           'Saved: ' +
-          result.mac
+          result.mac,
+          'success'
         );
 
 
@@ -4654,174 +4614,6 @@ function setSystemStatus(
         ? '#4cea92'
         : '#ff7474';
   }
-}
-
-
-/* ==========================================================
-   SAVE SUCCESS MESSAGE
-   Shows only the successful save confirmation
-   directly below SAVE & SCAN NEXT.
-========================================================== */
-
-function showSaveSuccess(
-  message
-) {
-
-  const saveButton =
-    document.getElementById(
-      'saveBtn'
-    );
-
-
-  if (
-    !saveButton
-  ) {
-
-    showMessage(
-      message,
-      'success'
-    );
-
-    return;
-  }
-
-
-  let box =
-    document.getElementById(
-      'saveSuccessMessage'
-    );
-
-
-  if (
-    !box
-  ) {
-
-    box =
-      document.createElement(
-        'div'
-      );
-
-
-    box.id =
-      'saveSuccessMessage';
-
-
-    box.setAttribute(
-      'role',
-      'status'
-    );
-
-
-    box.style.width =
-      '100%';
-
-
-    box.style.boxSizing =
-      'border-box';
-
-
-    box.style.marginTop =
-      '10px';
-
-
-    box.style.padding =
-      '10px 12px';
-
-
-    box.style.borderRadius =
-      '10px';
-
-
-    box.style.background =
-      '#e9f9ef';
-
-
-    box.style.border =
-      '1px solid #b7e7c8';
-
-
-    box.style.color =
-      '#16864b';
-
-
-    box.style.fontSize =
-      '14px';
-
-
-    box.style.fontWeight =
-      '700';
-
-
-    box.style.lineHeight =
-      '1.35';
-
-
-    box.style.textAlign =
-      'center';
-
-
-    box.style.opacity =
-      '0';
-
-
-    box.style.transition =
-      'opacity .18s ease';
-
-
-    saveButton.insertAdjacentElement(
-      'afterend',
-      box
-    );
-  }
-
-
-  if (
-    box._hideTimer
-  ) {
-
-    clearTimeout(
-      box._hideTimer
-    );
-  }
-
-
-  box.textContent =
-    '✓ ' +
-    message;
-
-
-  box.style.display =
-    'block';
-
-
-  requestAnimationFrame(
-    function () {
-
-      box.style.opacity =
-        '1';
-    }
-  );
-
-
-  box._hideTimer =
-    setTimeout(
-      function () {
-
-        box.style.opacity =
-          '0';
-
-
-        setTimeout(
-          function () {
-
-            box.style.display =
-              'none';
-          },
-          200
-        );
-      },
-      5000
-    );
 }
 
 
