@@ -2,23 +2,23 @@
  * ============================================================
  * ICHC MAC Scanner
  *
- * V1.1.3
- * PaddleOCR Remote Engine
+ * Version: V1.1.3.1
+ * ngrok Connection Fix
  *
- * Primary OCR:
- *   iPhone / Browser
- *        ↓
- *   ngrok HTTPS
- *        ↓
- *   Local Flask Server
- *        ↓
- *   PaddleOCR
+ * PRIMARY OCR:
+ * Browser / iPhone
+ *      ↓ HTTPS
+ * ngrok
+ *      ↓
+ * Flask API
+ *      ↓
+ * PaddleOCR
  *
- * Fallback OCR:
- *   Tesseract.js in browser
+ * FALLBACK:
+ * Tesseract.js - ONLY after real server/network failure.
  *
- * Google Sheets:
- *   Apps Script API
+ * DATABASE:
+ * Google Apps Script + Google Sheets
  * ============================================================
  */
 
@@ -31,17 +31,20 @@
 
 
 /**
- * IMPORTANT:
+ * IMPORTANT
  *
- * Paste here the SAME Apps Script /exec URL
- * you already used in the previous working version.
+ * Keep your real Apps Script /exec URL here.
+ *
+ * Example:
+ *
+ * https://script.google.com/macros/s/ABC123.../exec
  */
 const API_URL =
   'https://script.google.com/a/macros/ichc.ro/s/AKfycbxNhJ2t4fZIu1K_lv2C5dUC1os0wFQN5J0CwIE85iFthjC-0wguwcLhIXIXsSHFKSAo6g/exec';
 
 
 /**
- * PaddleOCR server through ngrok.
+ * Current ngrok tunnel.
  */
 const PADDLE_SERVER_URL =
   'https://reporter-visibly-number.ngrok-free.dev';
@@ -56,13 +59,22 @@ const PADDLE_OCR_URL =
 
 
 const APP_VERSION =
-  'V1.1.3';
+  'V1.1.3.1';
 
 
 /**
- * Remote OCR consensus.
- *
- * Three separate camera frames are sent to PaddleOCR.
+ * Connection timeouts
+ */
+const HEALTH_TIMEOUT_MS =
+  8000;
+
+
+const OCR_TIMEOUT_MS =
+  30000;
+
+
+/**
+ * Remote OCR consensus
  */
 const REMOTE_SCAN_COUNT =
   3;
@@ -78,13 +90,6 @@ const REMOTE_CAPTURE_INTERVAL_MS =
 
 const REMOTE_INITIAL_DELAY_MS =
   350;
-
-
-/**
- * Network timeout.
- */
-const OCR_SERVER_TIMEOUT_MS =
-  20000;
 
 
 
@@ -122,9 +127,14 @@ let paddleServerOnline =
   false;
 
 
-/**
- * Verification state
- */
+let paddleLastError =
+  '';
+
+
+let currentScanMode =
+  'screen';
+
+
 let macVerification = {
 
   mode:
@@ -168,6 +178,9 @@ document.addEventListener(
     resetVerification();
 
 
+    bindCompatibilityControls();
+
+
     handleMacInput();
 
 
@@ -177,7 +190,12 @@ document.addEventListener(
     await discoverCameras();
 
 
-    checkPaddleServer();
+    /**
+     * Do not block UI startup.
+     */
+    checkPaddleServer(
+      false
+    );
 
 
   }
@@ -188,7 +206,78 @@ document.addEventListener(
 
 /**
  * ============================================================
- * VERSION UI
+ * UI COMPATIBILITY
+ *
+ * Works with both the previous UI and the newer
+ * "Local PaddleOCR" interface.
+ * ============================================================
+ */
+
+function bindCompatibilityControls() {
+
+
+  /**
+   * TEST button
+   *
+   * Supports several possible IDs.
+   */
+
+  const testButtonIds = [
+
+    'testServerBtn',
+
+    'testOcrBtn',
+
+    'testOCRBtn',
+
+    'paddleTestBtn'
+
+  ];
+
+
+  testButtonIds.forEach(
+
+    function (
+      id
+    ) {
+
+
+      const button =
+        document.getElementById(
+          id
+        );
+
+
+      if (
+        button
+      ) {
+
+
+        button.onclick =
+          function () {
+
+
+            testPaddleServer();
+
+
+          };
+
+
+      }
+
+
+    }
+
+  );
+
+
+}
+
+
+
+/**
+ * ============================================================
+ * VERSION
  * ============================================================
  */
 
@@ -205,8 +294,10 @@ function updateVersionUI() {
     versionBox
   ) {
 
+
     versionBox.textContent =
-      APP_VERSION;
+      'V1.1.3.1';
+
 
   }
 
@@ -221,11 +312,13 @@ function updateVersionUI() {
     footer
   ) {
 
+
     footer.textContent =
 
       'ICHC MAC Scanner • PaddleOCR Remote Engine • ' +
 
       APP_VERSION;
+
 
   }
 
@@ -235,7 +328,7 @@ function updateVersionUI() {
 
 /**
  * ============================================================
- * UTILITY DELAY
+ * DELAY
  * ============================================================
  */
 
@@ -243,16 +336,19 @@ function sleep(
   ms
 ) {
 
+
   return new Promise(
 
     function (
       resolve
     ) {
 
+
       setTimeout(
         resolve,
         ms
       );
+
 
     }
 
@@ -299,36 +395,459 @@ function resetVerification() {
 
 /**
  * ============================================================
- * CHECK PADDLEOCR SERVER
+ * NGROK HEADERS
  * ============================================================
  */
 
-async function checkPaddleServer() {
+function getNgrokHeaders() {
+
+
+  return {
+
+    'ngrok-skip-browser-warning':
+      'true',
+
+    'Accept':
+      'application/json'
+
+  };
+
+}
+
+
+
+/**
+ * ============================================================
+ * FETCH WITH TIMEOUT
+ * ============================================================
+ */
+
+async function fetchWithTimeout(
+
+  url,
+
+  options,
+
+  timeoutMs
+
+) {
+
+
+  const controller =
+    new AbortController();
+
+
+  const timeout =
+
+    setTimeout(
+
+      function () {
+
+
+        controller.abort();
+
+
+      },
+
+      timeoutMs
+
+    );
 
 
   try {
 
 
-    const controller =
-      new AbortController();
+    const finalOptions =
+
+      Object.assign(
+        {},
+        options || {}
+      );
 
 
-    const timeout =
-      setTimeout(
+    finalOptions.signal =
+      controller.signal;
 
-        function () {
 
-          controller.abort();
+    return await fetch(
 
-        },
+      url,
 
-        6000
+      finalOptions
+
+    );
+
+
+  } catch (
+    error
+  ) {
+
+
+    if (
+      error.name ===
+      'AbortError'
+    ) {
+
+
+      throw new Error(
+        'Connection timeout'
+      );
+
+
+    }
+
+
+    throw error;
+
+
+  } finally {
+
+
+    clearTimeout(
+      timeout
+    );
+
+
+  }
+
+}
+
+
+
+/**
+ * ============================================================
+ * PADDLE SERVER STATUS UI
+ * ============================================================
+ */
+
+function setPaddleServerStatus(
+
+  state,
+
+  detail
+
+) {
+
+
+  /**
+   * Main blue status card
+   */
+
+  if (
+    state ===
+    'online'
+  ) {
+
+
+    setSystemStatus(
+
+      'PaddleOCR ready',
+
+      true
+
+    );
+
+
+  } else if (
+    state ===
+    'checking'
+  ) {
+
+
+    setSystemStatus(
+
+      'Checking OCR...',
+
+      true
+
+    );
+
+
+  } else {
+
+
+    setSystemStatus(
+
+      'PaddleOCR Offline',
+
+      false
+
+    );
+
+
+  }
+
+
+
+  /**
+   * Newer Local PaddleOCR card.
+   *
+   * Try several possible IDs so we do not require
+   * another index.html modification.
+   */
+
+  const possibleStatusIds = [
+
+    'ocrServerStatus',
+
+    'serverStatus',
+
+    'paddleServerStatus',
+
+    'paddleStatus',
+
+    'ocrConnectionStatus'
+
+  ];
+
+
+  let statusElement =
+    null;
+
+
+  possibleStatusIds.some(
+
+    function (
+      id
+    ) {
+
+
+      const el =
+        document.getElementById(
+          id
+        );
+
+
+      if (
+        el
+      ) {
+
+
+        statusElement =
+          el;
+
+
+        return true;
+
+
+      }
+
+
+      return false;
+
+
+    }
+
+  );
+
+
+  /**
+   * Also search for an element containing
+   * the original "Checking connection..." text.
+   */
+
+  if (
+    !statusElement
+  ) {
+
+
+    const candidates =
+
+      document.querySelectorAll(
+
+        '.server-status, .ocr-server-status, .connection-status, .status-text'
 
       );
 
 
+    if (
+      candidates.length
+    ) {
+
+
+      statusElement =
+        candidates[0];
+
+
+    }
+
+
+  }
+
+
+  if (
+    statusElement
+  ) {
+
+
+    if (
+      state ===
+      'online'
+    ) {
+
+
+      statusElement.textContent =
+
+        detail ||
+
+        'PaddleOCR ready';
+
+
+    } else if (
+      state ===
+      'checking'
+    ) {
+
+
+      statusElement.textContent =
+
+        'Checking connection...';
+
+
+    } else {
+
+
+      statusElement.textContent =
+
+        detail ||
+
+        'Offline';
+
+
+    }
+
+
+  }
+
+
+
+  /**
+   * Card border / visual state where available.
+   */
+
+  const possibleCardIds = [
+
+    'ocrServerCard',
+
+    'serverStatusCard',
+
+    'paddleServerCard'
+
+  ];
+
+
+  possibleCardIds.forEach(
+
+    function (
+      id
+    ) {
+
+
+      const card =
+        document.getElementById(
+          id
+        );
+
+
+      if (
+        !card
+      ) {
+
+
+        return;
+
+
+      }
+
+
+      card.classList.remove(
+
+        'online',
+
+        'offline',
+
+        'checking',
+
+        'success',
+
+        'error'
+
+      );
+
+
+      if (
+        state ===
+        'online'
+      ) {
+
+
+        card.classList.add(
+          'online'
+        );
+
+
+      } else if (
+        state ===
+        'checking'
+      ) {
+
+
+        card.classList.add(
+          'checking'
+        );
+
+
+      } else {
+
+
+        card.classList.add(
+          'offline'
+        );
+
+
+      }
+
+
+    }
+
+  );
+
+}
+
+
+
+/**
+ * ============================================================
+ * CHECK PADDLEOCR SERVER
+ * ============================================================
+ */
+
+async function checkPaddleServer(
+
+  showMessageOnSuccess = false
+
+) {
+
+
+  setPaddleServerStatus(
+
+    'checking',
+
+    'Checking connection...'
+
+  );
+
+
+  paddleLastError =
+    '';
+
+
+  try {
+
+
     const response =
-      await fetch(
+
+      await fetchWithTimeout(
 
         PADDLE_HEALTH_URL,
 
@@ -340,55 +859,136 @@ async function checkPaddleServer() {
           cache:
             'no-store',
 
-          signal:
-            controller.signal
+          headers:
+            getNgrokHeaders()
 
-        }
+        },
+
+        HEALTH_TIMEOUT_MS
 
       );
-
-
-    clearTimeout(
-      timeout
-    );
 
 
     if (
       !response.ok
     ) {
 
+
       throw new Error(
+
         'HTTP ' +
-        response.status
+        response.status +
+        ' ' +
+        response.statusText
+
       );
+
 
     }
 
 
-    const data =
-      await response.json();
 
+    const contentType =
 
-    paddleServerOnline =
-      !!(
-        data &&
-        data.success
-      );
+      response.headers.get(
+        'content-type'
+      ) || '';
+
 
 
     if (
-      paddleServerOnline
+      !contentType.includes(
+        'application/json'
+      )
     ) {
 
-      setSystemStatus(
 
-        'PaddleOCR ready',
+      const raw =
 
-        true
+        await response.text();
+
+
+      console.warn(
+
+        'Unexpected health response:',
+
+        raw
 
       );
 
+
+      throw new Error(
+        'Server returned non-JSON response'
+      );
+
+
     }
+
+
+
+    const data =
+
+      await response.json();
+
+
+
+    if (
+
+      !data ||
+
+      data.success !== true
+
+    ) {
+
+
+      throw new Error(
+        'Invalid health response'
+      );
+
+
+    }
+
+
+
+    paddleServerOnline =
+      true;
+
+
+
+    paddleLastError =
+      '';
+
+
+
+    setPaddleServerStatus(
+
+      'online',
+
+      'PaddleOCR ready'
+
+    );
+
+
+
+    if (
+      showMessageOnSuccess
+    ) {
+
+
+      showMessage(
+
+        'PaddleOCR server connected successfully.',
+
+        'success'
+
+      );
+
+
+    }
+
+
+
+    return true;
 
 
   } catch (
@@ -400,24 +1000,211 @@ async function checkPaddleServer() {
       false;
 
 
-    console.warn(
 
-      'PaddleOCR server offline:',
+    paddleLastError =
+
+      error.message ||
+
+      'Unknown connection error';
+
+
+
+    console.error(
+
+      'PaddleOCR health check failed:',
 
       error
 
     );
 
 
-    setSystemStatus(
 
-      'Local OCR mode',
+    setPaddleServerStatus(
 
-      true
+      'offline',
+
+      'Offline • ' +
+      paddleLastError
 
     );
 
+
+
+    return false;
+
+
   }
+
+}
+
+
+
+/**
+ * ============================================================
+ * TEST BUTTON
+ *
+ * This function is globally accessible from HTML:
+ *
+ * onclick="testPaddleServer()"
+ * ============================================================
+ */
+
+async function testPaddleServer() {
+
+
+  const testButtonIds = [
+
+    'testServerBtn',
+
+    'testOcrBtn',
+
+    'testOCRBtn',
+
+    'paddleTestBtn'
+
+  ];
+
+
+  const buttons =
+    [];
+
+
+  testButtonIds.forEach(
+
+    function (
+      id
+    ) {
+
+
+      const button =
+        document.getElementById(
+          id
+        );
+
+
+      if (
+        button
+      ) {
+
+
+        buttons.push(
+          button
+        );
+
+
+        button.disabled =
+          true;
+
+
+        button.dataset.originalText =
+          button.textContent;
+
+
+        button.textContent =
+          '...';
+
+
+      }
+
+
+    }
+
+  );
+
+
+  const success =
+
+    await checkPaddleServer(
+      true
+    );
+
+
+  buttons.forEach(
+
+    function (
+      button
+    ) {
+
+
+      button.disabled =
+        false;
+
+
+      button.textContent =
+
+        button.dataset.originalText ||
+
+        'TEST';
+
+
+    }
+
+  );
+
+
+  if (
+    !success
+  ) {
+
+
+    showMessage(
+
+      'PaddleOCR server is offline: ' +
+      paddleLastError,
+
+      'error'
+
+    );
+
+
+  }
+
+}
+
+
+
+/**
+ * ============================================================
+ * SCAN MODE
+ *
+ * Optional compatibility for:
+ *
+ * DEVICE LABEL
+ * SCREEN
+ * ============================================================
+ */
+
+function setScanMode(
+  mode
+) {
+
+
+  if (
+    mode !==
+    'device'
+    &&
+    mode !==
+    'screen'
+  ) {
+
+
+    return;
+
+
+  }
+
+
+  currentScanMode =
+    mode;
+
+
+  console.log(
+
+    'Scan mode:',
+
+    currentScanMode
+
+  );
 
 }
 
@@ -474,10 +1261,12 @@ async function discoverCameras() {
           device
         ) {
 
+
           return (
             device.kind ===
             'videoinput'
           );
+
 
         }
 
@@ -509,7 +1298,7 @@ async function discoverCameras() {
 
 /**
  * ============================================================
- * POPULATE CAMERA LIST
+ * CAMERA LIST
  * ============================================================
  */
 
@@ -517,23 +1306,26 @@ function populateCameraList() {
 
 
   const select =
+
     document.getElementById(
       'cameraSelect'
     );
 
 
   const row =
+
     document.getElementById(
       'cameraSelectRow'
     );
 
 
   if (
-    !select ||
-    !row
+    !select
   ) {
 
+
     return;
+
 
   }
 
@@ -543,16 +1335,22 @@ function populateCameraList() {
 
 
   if (
-
     videoDevices.length ===
     0
-
   ) {
 
 
-    row.classList.add(
-      'hidden'
-    );
+    if (
+      row
+    ) {
+
+
+      row.classList.add(
+        'hidden'
+      );
+
+
+    }
 
 
     return;
@@ -569,6 +1367,7 @@ function populateCameraList() {
 
 
       const option =
+
         document.createElement(
           'option'
         );
@@ -598,9 +1397,17 @@ function populateCameraList() {
   );
 
 
-  row.classList.remove(
-    'hidden'
-  );
+  if (
+    row
+  ) {
+
+
+    row.classList.remove(
+      'hidden'
+    );
+
+
+  }
 
 }
 
@@ -613,20 +1420,43 @@ function populateCameraList() {
  */
 
 async function startCamera(
+
   requestedDeviceId = null
+
 ) {
 
 
   const video =
+
     document.getElementById(
       'camera'
     );
+
+
+  if (
+    !video
+  ) {
+
+
+    showMessage(
+
+      'Camera element not found.',
+
+      'error'
+
+    );
+
+
+    return;
+
+  }
 
 
   try {
 
 
     stopCamera();
+
 
 
     let constraints;
@@ -649,14 +1479,12 @@ async function startCamera(
 
           },
 
-
           width: {
 
             ideal:
               1920
 
           },
-
 
           height: {
 
@@ -666,7 +1494,6 @@ async function startCamera(
           }
 
         },
-
 
         audio:
           false
@@ -688,14 +1515,12 @@ async function startCamera(
 
           },
 
-
           width: {
 
             ideal:
               1920
 
           },
-
 
           height: {
 
@@ -705,7 +1530,6 @@ async function startCamera(
           }
 
         },
-
 
         audio:
           false
@@ -735,50 +1559,84 @@ async function startCamera(
 
 
 
-    document
+    const placeholder =
 
-      .getElementById(
+      document.getElementById(
         'cameraPlaceholder'
-      )
+      );
 
-      .classList
 
-      .add(
+    if (
+      placeholder
+    ) {
+
+
+      placeholder.classList.add(
         'hidden'
       );
 
 
+    }
 
-    document
 
-      .getElementById(
+
+    const scanBtn =
+
+      document.getElementById(
         'scanBtn'
-      )
-
-      .disabled =
-      false;
+      );
 
 
+    if (
+      scanBtn
+    ) {
 
-    document
 
-      .getElementById(
+      scanBtn.disabled =
+        false;
+
+
+    }
+
+
+
+    const switchBtn =
+
+      document.getElementById(
         'switchCameraBtn'
-      )
-
-      .disabled =
-      false;
+      );
 
 
+    if (
+      switchBtn
+    ) {
 
-    document
 
-      .getElementById(
+      switchBtn.disabled =
+        false;
+
+
+    }
+
+
+
+    const startButton =
+
+      document.getElementById(
         'startCameraBtn'
-      )
+      );
 
-      .textContent =
-      'RESTART CAMERA';
+
+    if (
+      startButton
+    ) {
+
+
+      startButton.textContent =
+        'RESTART CAMERA';
+
+
+    }
 
 
 
@@ -803,6 +1661,7 @@ async function startCamera(
     currentDeviceId =
 
       settings.deviceId ||
+
       null;
 
 
@@ -815,6 +1674,7 @@ async function startCamera(
       paddleServerOnline
     ) {
 
+
       setSystemStatus(
 
         'PaddleOCR ready',
@@ -823,15 +1683,18 @@ async function startCamera(
 
       );
 
+
     } else {
+
 
       setSystemStatus(
 
-        'Camera ready',
+        'Camera ready • OCR Offline',
 
-        true
+        false
 
       );
+
 
     }
 
@@ -874,22 +1737,24 @@ function stopCamera() {
     !cameraStream
   ) {
 
+
     return;
+
 
   }
 
 
   cameraStream
-
     .getTracks()
-
     .forEach(
 
       function (
         track
       ) {
 
+
         track.stop();
+
 
       }
 
@@ -919,7 +1784,6 @@ function handleCameraError(
     'Camera could not be started.';
 
 
-
   switch (
     error.name
   ) {
@@ -927,49 +1791,54 @@ function handleCameraError(
 
     case 'NotAllowedError':
 
+
       message =
         'Camera permission was denied. Allow camera access in browser settings.';
 
-      break;
 
+      break;
 
 
     case 'NotFoundError':
 
+
       message =
         'No camera was detected on this device.';
 
-      break;
 
+      break;
 
 
     case 'NotReadableError':
 
+
       message =
         'The camera may already be used by another application.';
 
-      break;
 
+      break;
 
 
     case 'OverconstrainedError':
 
+
       message =
         'The selected camera is not available.';
 
-      break;
 
+      break;
 
 
     case 'SecurityError':
 
+
       message =
         'Camera access requires HTTPS.';
+
 
       break;
 
   }
-
 
 
   setSystemStatus(
@@ -979,7 +1848,6 @@ function handleCameraError(
     false
 
   );
-
 
 
   showMessage(
@@ -1004,6 +1872,7 @@ async function changeCamera() {
 
 
   const select =
+
     document.getElementById(
       'cameraSelect'
     );
@@ -1014,7 +1883,9 @@ async function changeCamera() {
     !select.value
   ) {
 
+
     return;
+
 
   }
 
@@ -1033,7 +1904,7 @@ async function changeCamera() {
 
 /**
  * ============================================================
- * SYNC CAMERA SELECTOR
+ * SYNC CAMERA SELECT
  * ============================================================
  */
 
@@ -1041,6 +1912,7 @@ function syncCameraSelector() {
 
 
   const select =
+
     document.getElementById(
       'cameraSelect'
     );
@@ -1075,10 +1947,8 @@ async function switchCamera() {
 
 
   if (
-
     videoDevices.length <
     2
-
   ) {
 
 
@@ -1096,7 +1966,6 @@ async function switchCamera() {
   }
 
 
-
   const currentIndex =
 
     videoDevices.findIndex(
@@ -1105,6 +1974,7 @@ async function switchCamera() {
         device
       ) {
 
+
         return (
 
           device.deviceId ===
@@ -1112,10 +1982,10 @@ async function switchCamera() {
 
         );
 
+
       }
 
     );
-
 
 
   currentCameraIndex =
@@ -1127,20 +1997,17 @@ async function switchCamera() {
       : 0;
 
 
-
   if (
-
     currentCameraIndex >=
     videoDevices.length
-
   ) {
 
 
     currentCameraIndex =
       0;
 
-  }
 
+  }
 
 
   const nextDevice =
@@ -1150,11 +2017,8 @@ async function switchCamera() {
     ];
 
 
-
   await startCamera(
-
     nextDevice.deviceId
-
   );
 
 }
@@ -1174,10 +2038,11 @@ async function scanMac() {
     ocrBusy
   ) {
 
+
     return;
 
-  }
 
+  }
 
 
   const video =
@@ -1185,7 +2050,6 @@ async function scanMac() {
     document.getElementById(
       'camera'
     );
-
 
 
   if (
@@ -1213,18 +2077,14 @@ async function scanMac() {
   }
 
 
-
   resetVerification();
-
 
 
   clearMacResult();
 
 
-
   ocrBusy =
     true;
-
 
 
   const scanBtn =
@@ -1234,64 +2094,115 @@ async function scanMac() {
     );
 
 
+  if (
+    scanBtn
+  ) {
 
-  scanBtn.disabled =
-    true;
 
+    scanBtn.disabled =
+      true;
+
+
+  }
 
 
   try {
 
 
     /**
-     * Primary path:
-     * PaddleOCR remote server.
+     * Always attempt PaddleOCR first.
+     *
+     * We do NOT automatically trust an old
+     * paddleServerOnline=false state.
      */
 
-    if (
-      paddleServerOnline
-    ) {
+    const remoteResult =
 
-
-      await runRemotePaddleConsensus(
+      await attemptRemotePaddleScan(
         video
       );
 
 
-    } else {
+    /**
+     * Remote server successfully answered.
+     *
+     * Even if no MAC was found, this is NOT
+     * a server failure.
+     *
+     * Therefore:
+     * DO NOT run local fallback.
+     */
 
-
-      /**
-       * Server appears offline.
-       * Try again once before using fallback.
-       */
-
-      await checkPaddleServer();
-
+    if (
+      remoteResult.status ===
+      'completed'
+    ) {
 
 
       if (
-        paddleServerOnline
+        remoteResult.detected
       ) {
 
 
-        await runRemotePaddleConsensus(
-          video
+        evaluateRemoteConsensus(
+          remoteResult.readings
         );
 
 
       } else {
 
 
-        await runLocalTesseractFallback(
-          video
+        rejectMacResult(
+
+          'PaddleOCR responded correctly, but no MAC Address was detected.'
+
         );
 
 
       }
 
 
+      return;
+
+
     }
+
+
+    /**
+     * Real network/server failure.
+     *
+     * Only now use local OCR fallback.
+     */
+
+    console.warn(
+
+      'Real PaddleOCR failure. Starting local fallback.'
+
+    );
+
+
+    setPaddleServerStatus(
+
+      'offline',
+
+      'Offline • ' +
+      remoteResult.error
+
+    );
+
+
+    showMessage(
+
+      'PaddleOCR server unavailable. Using local OCR fallback.',
+
+      'warning'
+
+    );
+
+
+    await runLocalTesseractFallback(
+      video
+    );
 
 
   } catch (
@@ -1301,55 +2212,18 @@ async function scanMac() {
 
     console.error(
 
-      'Scan error:',
+      'Unexpected scan error:',
 
       error
 
     );
 
 
+    rejectMacResult(
 
-    showMessage(
-
-      'Remote OCR unavailable. Trying local OCR.',
-
-      'warning'
+      'Unexpected OCR error. Please try again.'
 
     );
-
-
-
-    try {
-
-
-      await runLocalTesseractFallback(
-        video
-      );
-
-
-    } catch (
-      fallbackError
-    ) {
-
-
-      console.error(
-
-        'Fallback OCR failed:',
-
-        fallbackError
-
-      );
-
-
-
-      rejectMacResult(
-
-        'OCR failed. Please try again.'
-
-      );
-
-
-    }
 
 
   } finally {
@@ -1359,8 +2233,8 @@ async function scanMac() {
       false;
 
 
-
     if (
+      scanBtn &&
       cameraStream
     ) {
 
@@ -1380,11 +2254,20 @@ async function scanMac() {
 
 /**
  * ============================================================
- * REMOTE PADDLE CONSENSUS
+ * ATTEMPT REMOTE PADDLE SCAN
+ *
+ * Returns:
+ *
+ * {
+ *   status: "completed" | "failed",
+ *   detected: true | false,
+ *   readings: [],
+ *   error: ""
+ * }
  * ============================================================
  */
 
-async function runRemotePaddleConsensus(
+async function attemptRemotePaddleScan(
   video
 ) {
 
@@ -1395,10 +2278,48 @@ async function runRemotePaddleConsensus(
 
     'PaddleOCR',
 
-    'Hold the phone steady...'
+    'Connecting to OCR server...'
 
   );
 
+
+  /**
+   * First verify server.
+   */
+
+  const online =
+
+    await checkPaddleServer(
+      false
+    );
+
+
+  if (
+    !online
+  ) {
+
+
+    return {
+
+      status:
+        'failed',
+
+      detected:
+        false,
+
+      readings:
+        [],
+
+      error:
+
+        paddleLastError ||
+
+        'Server unavailable'
+
+    };
+
+
+  }
 
 
   await sleep(
@@ -1406,15 +2327,20 @@ async function runRemotePaddleConsensus(
   );
 
 
-
   const readings =
     [];
 
 
-
-  let networkFailures =
+  let successfulRequests =
     0;
 
+
+  let failedRequests =
+    0;
+
+
+  let lastError =
+    '';
 
 
   for (
@@ -1443,13 +2369,11 @@ async function runRemotePaddleConsensus(
     );
 
 
-
     const canvas =
 
       captureVideoFrame(
         video
       );
-
 
 
     try {
@@ -1461,6 +2385,8 @@ async function runRemotePaddleConsensus(
           canvas
         );
 
+
+      successfulRequests++;
 
 
       console.log(
@@ -1474,47 +2400,71 @@ async function runRemotePaddleConsensus(
       );
 
 
-
       if (
 
         result &&
 
-        result.success &&
-
-        result.mac &&
-
-        normalizeMac(
-          result.mac
-        )
+        result.success ===
+        true
 
       ) {
 
 
-        readings.push({
+        if (
 
-          mac:
+          result.mac &&
 
-            normalizeMac(
-              result.mac
-            ),
+          normalizeMac(
+            result.mac
+          )
 
-
-          labeled:
-
-            !!result.labeled,
+        ) {
 
 
-          sourceLine:
+          readings.push({
 
-            result.source_line ||
-            '',
+            mac:
+
+              normalizeMac(
+                result.mac
+              ),
+
+            labeled:
+
+              !!result.labeled,
+
+            sourceLine:
+
+              result.source_line ||
+              '',
+
+            raw:
+
+              result
+
+          });
 
 
-          raw:
+        }
 
-            result
 
-        });
+      } else {
+
+
+        /**
+         * Server returned JSON,
+         * so connectivity works.
+         *
+         * Treat this as successful server communication.
+         */
+
+        console.warn(
+
+          'PaddleOCR response without success:',
+
+          result
+
+        );
 
 
       }
@@ -1525,13 +2475,19 @@ async function runRemotePaddleConsensus(
     ) {
 
 
-      networkFailures++;
+      failedRequests++;
 
 
+      lastError =
 
-      console.warn(
+        error.message ||
 
-        'Remote OCR request failed:',
+        'Remote OCR request failed';
+
+
+      console.error(
+
+        'PaddleOCR request failed:',
 
         error
 
@@ -1541,12 +2497,9 @@ async function runRemotePaddleConsensus(
     }
 
 
-
     if (
-
       i <
       REMOTE_SCAN_COUNT - 1
-
     ) {
 
 
@@ -1561,39 +2514,79 @@ async function runRemotePaddleConsensus(
   }
 
 
-
   /**
-   * If all server calls failed,
-   * this is a connectivity failure.
+   * At least one real response came from server.
    *
-   * Then local OCR fallback is allowed.
+   * Therefore the server itself is reachable.
    */
 
   if (
-
-    networkFailures ===
-    REMOTE_SCAN_COUNT
-
+    successfulRequests >
+    0
   ) {
 
 
     paddleServerOnline =
-      false;
+      true;
 
 
+    setPaddleServerStatus(
 
-    throw new Error(
-      'PaddleOCR server unreachable.'
+      'online',
+
+      'PaddleOCR ready'
+
     );
+
+
+    return {
+
+      status:
+        'completed',
+
+      detected:
+
+        readings.length >
+        0,
+
+      readings:
+        readings,
+
+      error:
+        ''
+
+    };
 
 
   }
 
 
+  /**
+   * Every remote request failed.
+   */
 
-  evaluateRemoteConsensus(
-    readings
-  );
+  paddleServerOnline =
+    false;
+
+
+  return {
+
+    status:
+      'failed',
+
+    detected:
+      false,
+
+    readings:
+      [],
+
+    error:
+
+      lastError ||
+
+      'All OCR requests failed'
+
+  };
 
 }
 
@@ -1601,7 +2594,142 @@ async function runRemotePaddleConsensus(
 
 /**
  * ============================================================
- * REMOTE CONSENSUS DECISION
+ * SEND CANVAS TO PADDLEOCR
+ * ============================================================
+ */
+
+async function sendCanvasToPaddle(
+  canvas
+) {
+
+
+  const blob =
+
+    await canvasToBlob(
+      canvas
+    );
+
+
+  const formData =
+    new FormData();
+
+
+  formData.append(
+
+    'image',
+
+    blob,
+
+    'mac-scan.jpg'
+
+  );
+
+
+  /**
+   * IMPORTANT
+   *
+   * Do NOT manually set Content-Type here.
+   *
+   * Browser must generate multipart boundary.
+   */
+
+  const response =
+
+    await fetchWithTimeout(
+
+      PADDLE_OCR_URL,
+
+      {
+
+        method:
+          'POST',
+
+        body:
+          formData,
+
+        cache:
+          'no-store',
+
+        headers: {
+
+          'ngrok-skip-browser-warning':
+            'true',
+
+          'Accept':
+            'application/json'
+
+        }
+
+      },
+
+      OCR_TIMEOUT_MS
+
+    );
+
+
+  if (
+    !response.ok
+  ) {
+
+
+    throw new Error(
+
+      'OCR HTTP ' +
+      response.status +
+      ' ' +
+      response.statusText
+
+    );
+
+
+  }
+
+
+  const contentType =
+
+    response.headers.get(
+      'content-type'
+    ) || '';
+
+
+  if (
+    !contentType.includes(
+      'application/json'
+    )
+  ) {
+
+
+    const raw =
+
+      await response.text();
+
+
+    console.error(
+
+      'Unexpected ngrok/Paddle response:',
+
+      raw
+
+    );
+
+
+    throw new Error(
+      'OCR server returned non-JSON response'
+    );
+
+
+  }
+
+
+  return await response.json();
+
+}
+
+
+
+/**
+ * ============================================================
+ * REMOTE CONSENSUS
  * ============================================================
  */
 
@@ -1632,10 +2760,8 @@ function evaluateRemoteConsensus(
   }
 
 
-
   const groups =
     {};
-
 
 
   readings.forEach(
@@ -1671,11 +2797,9 @@ function evaluateRemoteConsensus(
       }
 
 
-
       groups[
         reading.mac
       ].count++;
-
 
 
       if (
@@ -1689,7 +2813,6 @@ function evaluateRemoteConsensus(
 
 
       }
-
 
 
       if (
@@ -1714,14 +2837,12 @@ function evaluateRemoteConsensus(
   );
 
 
-
   let winnerMac =
     null;
 
 
   let winner =
     null;
-
 
 
   Object.keys(
@@ -1735,7 +2856,6 @@ function evaluateRemoteConsensus(
 
       const group =
         groups[mac];
-
 
 
       if (
@@ -1772,7 +2892,6 @@ function evaluateRemoteConsensus(
   );
 
 
-
   if (
     !winnerMac ||
     !winner
@@ -1791,35 +2910,12 @@ function evaluateRemoteConsensus(
   }
 
 
-
-  /**
-   * V1.1.3 safety rules:
-   *
-   * Accept when:
-   *
-   * 1. Same MAC appears in 3/3 scans
-   *
-   * OR
-   *
-   * 2. Same MAC appears in at least 2 scans
-   *    AND at least one OCR result was associated
-   *    with a MAC/Physical Address label.
-   *
-   * OR
-   *
-   * 3. Same MAC appears in 2/3 scans.
-   *
-   * Rule 3 is still allowed because PaddleOCR
-   * is substantially more reliable than browser OCR.
-   */
-
   let accepted =
     false;
 
 
   let confidence =
     '';
-
 
 
   if (
@@ -1874,7 +2970,6 @@ function evaluateRemoteConsensus(
   }
 
 
-
   if (
     !accepted
   ) {
@@ -1882,17 +2977,16 @@ function evaluateRemoteConsensus(
 
     console.warn(
 
-      'Paddle consensus rejected:',
+      'Remote consensus rejected:',
 
       groups
 
     );
 
 
-
     rejectMacResult(
 
-      'Different MAC addresses were detected. Hold the phone steady and scan again.'
+      'Different MAC addresses were detected. Hold the camera steady and scan again.'
 
     );
 
@@ -1900,7 +2994,6 @@ function evaluateRemoteConsensus(
     return;
 
   }
-
 
 
   acceptRemoteMac(
@@ -1949,10 +3042,18 @@ function acceptRemoteMac(
     );
 
 
+  if (
+    !input
+  ) {
+
+
+    return;
+
+  }
+
 
   input.value =
     mac;
-
 
 
   macVerification = {
@@ -1981,9 +3082,7 @@ function acceptRemoteMac(
   };
 
 
-
   updateVerifiedMacUI();
-
 
 
   setOCRStatus(
@@ -1991,9 +3090,7 @@ function acceptRemoteMac(
   );
 
 
-
   vibrateSuccess();
-
 
 
   console.log(
@@ -2003,7 +3100,6 @@ function acceptRemoteMac(
     sourceLines
 
   );
-
 
 
   showMessage(
@@ -2026,133 +3122,7 @@ function acceptRemoteMac(
 
 /**
  * ============================================================
- * SEND IMAGE TO PADDLEOCR
- * ============================================================
- */
-
-async function sendCanvasToPaddle(
-  canvas
-) {
-
-
-  const blob =
-
-    await canvasToBlob(
-      canvas
-    );
-
-
-
-  const formData =
-    new FormData();
-
-
-
-  formData.append(
-
-    'image',
-
-    blob,
-
-    'mac-scan.jpg'
-
-  );
-
-
-
-  const controller =
-    new AbortController();
-
-
-
-  const timeout =
-
-    setTimeout(
-
-      function () {
-
-        controller.abort();
-
-      },
-
-      OCR_SERVER_TIMEOUT_MS
-
-    );
-
-
-
-  try {
-
-
-    const response =
-
-      await fetch(
-
-        PADDLE_OCR_URL,
-
-        {
-
-          method:
-            'POST',
-
-          body:
-            formData,
-
-          signal:
-            controller.signal,
-
-          cache:
-            'no-store'
-
-        }
-
-      );
-
-
-
-    if (
-      !response.ok
-    ) {
-
-
-      throw new Error(
-
-        'PaddleOCR HTTP ' +
-        response.status
-
-      );
-
-
-    }
-
-
-
-    const data =
-
-      await response.json();
-
-
-
-    return data;
-
-
-  } finally {
-
-
-    clearTimeout(
-      timeout
-    );
-
-
-  }
-
-}
-
-
-
-/**
- * ============================================================
- * CANVAS TO JPEG BLOB
+ * CANVAS → JPEG BLOB
  * ============================================================
  */
 
@@ -2205,7 +3175,7 @@ function canvasToBlob(
 
         'image/jpeg',
 
-        0.92
+        0.94
 
       );
 
@@ -2236,7 +3206,6 @@ function captureVideoFrame(
     );
 
 
-
   const ctx =
 
     canvas.getContext(
@@ -2253,7 +3222,6 @@ function captureVideoFrame(
     );
 
 
-
   const sourceWidth =
     video.videoWidth;
 
@@ -2262,25 +3230,38 @@ function captureVideoFrame(
     video.videoHeight;
 
 
-
   /**
-   * Crop around scanner frame.
-   *
-   * Keep enough vertical area for:
-   *
-   * Physical Address (MAC):
-   * AA:BB:CC:DD:EE:FF
+   * Slightly different crop for screen mode.
    */
+
+  const cropWidthRatio =
+
+    currentScanMode ===
+    'screen'
+
+      ? 0.94
+
+      : 0.90;
+
+
+  const cropHeightRatio =
+
+    currentScanMode ===
+    'screen'
+
+      ? 0.62
+
+      : 0.56;
+
 
   const cropWidth =
 
     Math.floor(
 
       sourceWidth *
-      0.92
+      cropWidthRatio
 
     );
-
 
 
   const cropHeight =
@@ -2288,10 +3269,9 @@ function captureVideoFrame(
     Math.floor(
 
       sourceHeight *
-      0.58
+      cropHeightRatio
 
     );
-
 
 
   const startX =
@@ -2306,7 +3286,6 @@ function captureVideoFrame(
     );
 
 
-
   const startY =
 
     Math.floor(
@@ -2319,13 +3298,6 @@ function captureVideoFrame(
     );
 
 
-
-  /**
-   * PaddleOCR benefits from larger text.
-   *
-   * Upscale smaller captures.
-   */
-
   const targetScale =
 
     sourceWidth <
@@ -2334,7 +3306,6 @@ function captureVideoFrame(
       ? 1.6
 
       : 1.25;
-
 
 
   canvas.width =
@@ -2347,7 +3318,6 @@ function captureVideoFrame(
     );
 
 
-
   canvas.height =
 
     Math.floor(
@@ -2356,7 +3326,6 @@ function captureVideoFrame(
       targetScale
 
     );
-
 
 
   ctx.drawImage(
@@ -2380,7 +3349,6 @@ function captureVideoFrame(
     canvas.height
 
   );
-
 
 
   return canvas;
@@ -2414,14 +3382,11 @@ function scanUploadedPhoto(
 
     return;
 
-
   }
-
 
 
   const reader =
     new FileReader();
-
 
 
   reader.onload =
@@ -2435,7 +3400,6 @@ function scanUploadedPhoto(
         new Image();
 
 
-
       img.onload =
 
         async function () {
@@ -2446,7 +3410,6 @@ function scanUploadedPhoto(
             document.createElement(
               'canvas'
             );
-
 
 
           const ctx =
@@ -2465,10 +3428,8 @@ function scanUploadedPhoto(
             );
 
 
-
           const maxWidth =
             2400;
-
 
 
           let width =
@@ -2477,7 +3438,6 @@ function scanUploadedPhoto(
 
           let height =
             img.height;
-
 
 
           if (
@@ -2492,10 +3452,8 @@ function scanUploadedPhoto(
               width;
 
 
-
             width =
               maxWidth;
-
 
 
             height =
@@ -2511,14 +3469,12 @@ function scanUploadedPhoto(
           }
 
 
-
           canvas.width =
             width;
 
 
           canvas.height =
             height;
-
 
 
           ctx.drawImage(
@@ -2536,8 +3492,7 @@ function scanUploadedPhoto(
           );
 
 
-
-          await scanPhotoWithPaddle(
+          await scanPhotoWithRemoteFirst(
             canvas
           );
 
@@ -2545,13 +3500,11 @@ function scanUploadedPhoto(
         };
 
 
-
       img.src =
         e.target.result;
 
 
     };
-
 
 
   reader.readAsDataURL(
@@ -2564,11 +3517,14 @@ function scanUploadedPhoto(
 
 /**
  * ============================================================
- * PHOTO THROUGH PADDLEOCR
+ * PHOTO OCR
+ *
+ * Remote first.
+ * Local fallback only if server actually fails.
  * ============================================================
  */
 
-async function scanPhotoWithPaddle(
+async function scanPhotoWithRemoteFirst(
   canvas
 ) {
 
@@ -2580,22 +3536,17 @@ async function scanPhotoWithPaddle(
 
     return;
 
-
   }
-
 
 
   ocrBusy =
     true;
 
 
-
   resetVerification();
 
 
-
   clearMacResult();
-
 
 
   setOCRStatus(
@@ -2604,55 +3555,87 @@ async function scanPhotoWithPaddle(
 
     'PaddleOCR',
 
-    'Uploading photo...'
+    'Uploading image...'
 
   );
-
 
 
   try {
 
 
+    /**
+     * Always attempt remote.
+     */
+
+    const online =
+
+      await checkPaddleServer(
+        false
+      );
+
+
     if (
-      !paddleServerOnline
+      !online
     ) {
 
 
-      await checkPaddleServer();
+      throw new Error(
+
+        paddleLastError ||
+
+        'PaddleOCR server offline'
+
+      );
 
 
     }
 
 
-
-    if (
-      paddleServerOnline
-    ) {
+    let result;
 
 
-      const result =
+    try {
+
+
+      result =
 
         await sendCanvasToPaddle(
           canvas
         );
 
 
+    } catch (
+      error
+    ) {
 
-      console.log(
 
-        'Paddle photo result:',
+      /**
+       * Real communication failure.
+       */
 
-        result
+      throw error;
 
-      );
 
+    }
+
+
+    /**
+     * Server responded.
+     *
+     * Do not fallback simply because OCR did not detect MAC.
+     */
+
+    if (
+
+      result &&
+
+      result.success ===
+      true
+
+    ) {
 
 
       if (
-
-        result &&
-
-        result.success &&
 
         result.mac &&
 
@@ -2670,7 +3653,6 @@ async function scanPhotoWithPaddle(
           );
 
 
-
         const input =
 
           document.getElementById(
@@ -2678,10 +3660,8 @@ async function scanPhotoWithPaddle(
           );
 
 
-
         input.value =
           mac;
-
 
 
         macVerification = {
@@ -2712,9 +3692,7 @@ async function scanPhotoWithPaddle(
         };
 
 
-
         updateVerifiedMacUI();
-
 
 
         setOCRStatus(
@@ -2722,9 +3700,7 @@ async function scanPhotoWithPaddle(
         );
 
 
-
         vibrateSuccess();
-
 
 
         showMessage(
@@ -2742,7 +3718,7 @@ async function scanPhotoWithPaddle(
 
         rejectMacResult(
 
-          'PaddleOCR could not detect a MAC Address in this photo.'
+          'PaddleOCR processed the image but did not find a MAC Address.'
 
         );
 
@@ -2750,15 +3726,17 @@ async function scanPhotoWithPaddle(
       }
 
 
-    } else {
-
-
-      await runLocalTesseractCanvas(
-        canvas
-      );
+      return;
 
 
     }
+
+
+    rejectMacResult(
+
+      'PaddleOCR processed the request but returned no valid result.'
+
+    );
 
 
   } catch (
@@ -2766,25 +3744,67 @@ async function scanPhotoWithPaddle(
   ) {
 
 
-    console.error(
-      error
-    );
+    /**
+     * ONLY here:
+     * actual remote failure.
+     */
 
+    paddleServerOnline =
+      false;
+
+
+    paddleLastError =
+
+      error.message ||
+
+      'Remote OCR failure';
+
+
+    setPaddleServerStatus(
+
+      'offline',
+
+      'Offline • ' +
+      paddleLastError
+
+    );
 
 
     showMessage(
 
-      'PaddleOCR unavailable. Trying local OCR.',
+      'PaddleOCR server unavailable. Using local OCR fallback.',
 
       'warning'
 
     );
 
 
+    try {
 
-    await runLocalTesseractCanvas(
-      canvas
-    );
+
+      await runLocalTesseractCanvas(
+        canvas
+      );
+
+
+    } catch (
+      fallbackError
+    ) {
+
+
+      console.error(
+        fallbackError
+      );
+
+
+      rejectMacResult(
+
+        'Both PaddleOCR and local OCR failed.'
+
+      );
+
+
+    }
 
 
   } finally {
@@ -2802,7 +3822,7 @@ async function scanPhotoWithPaddle(
 
 /**
  * ============================================================
- * LOCAL TESSERACT FALLBACK
+ * TESSERACT FALLBACK
  * ============================================================
  */
 
@@ -2816,9 +3836,7 @@ async function getTesseractWorker() {
 
     return tesseractWorker;
 
-
   }
-
 
 
   if (
@@ -2833,9 +3851,7 @@ async function getTesseractWorker() {
       'Tesseract.js is not loaded.'
     );
 
-
   }
-
 
 
   setOCRStatus(
@@ -2847,7 +3863,6 @@ async function getTesseractWorker() {
     'Loading fallback engine...'
 
   );
-
 
 
   tesseractWorker =
@@ -2899,11 +3914,9 @@ async function getTesseractWorker() {
 
           }
 
-
       }
 
     );
-
 
 
   await tesseractWorker
@@ -2919,7 +3932,6 @@ async function getTesseractWorker() {
     });
 
 
-
   return tesseractWorker;
 
 }
@@ -2928,7 +3940,7 @@ async function getTesseractWorker() {
 
 /**
  * ============================================================
- * LOCAL FALLBACK FROM CAMERA
+ * LOCAL FALLBACK CAMERA
  * ============================================================
  */
 
@@ -2948,13 +3960,11 @@ async function runLocalTesseractFallback(
   );
 
 
-
   const canvas =
 
     captureVideoFrame(
       video
     );
-
 
 
   await runLocalTesseractCanvas(
@@ -2981,13 +3991,11 @@ async function runLocalTesseractCanvas(
     await getTesseractWorker();
 
 
-
   const result =
 
     await worker.recognize(
       canvas
     );
-
 
 
   const text =
@@ -3000,15 +4008,13 @@ async function runLocalTesseractCanvas(
       : '';
 
 
-
   console.log(
 
-    'Local OCR text:',
+    'Local OCR:',
 
     text
 
   );
-
 
 
   const mac =
@@ -3016,7 +4022,6 @@ async function runLocalTesseractCanvas(
     extractStrictLocalMac(
       text
     );
-
 
 
   if (
@@ -3031,10 +4036,8 @@ async function runLocalTesseractCanvas(
       );
 
 
-
     input.value =
       mac;
-
 
 
     macVerification = {
@@ -3060,7 +4063,6 @@ async function runLocalTesseractCanvas(
     };
 
 
-
     setMacState(
 
       'valid',
@@ -3070,7 +4072,6 @@ async function runLocalTesseractCanvas(
     );
 
 
-
     const validation =
 
       document.getElementById(
@@ -3078,16 +4079,13 @@ async function runLocalTesseractCanvas(
       );
 
 
-
     validation.textContent =
 
-      'Local OCR result • Please verify manually';
-
+      'Local OCR • Verify manually before saving';
 
 
     validation.style.color =
       '#84590b';
-
 
 
     document
@@ -3100,11 +4098,9 @@ async function runLocalTesseractCanvas(
       false;
 
 
-
     setOCRStatus(
       false
     );
-
 
 
     showMessage(
@@ -3123,7 +4119,7 @@ async function runLocalTesseractCanvas(
 
     rejectMacResult(
 
-      'No reliable MAC Address was detected.'
+      'Local OCR could not detect a reliable MAC Address.'
 
     );
 
@@ -3136,7 +4132,7 @@ async function runLocalTesseractCanvas(
 
 /**
  * ============================================================
- * STRICT LOCAL MAC EXTRACTION
+ * STRICT LOCAL EXTRACTION
  * ============================================================
  */
 
@@ -3152,9 +4148,7 @@ function extractStrictLocalMac(
 
     return null;
 
-
   }
-
 
 
   const upper =
@@ -3163,21 +4157,15 @@ function extractStrictLocalMac(
       .toUpperCase();
 
 
-
   const patterns = [
-
 
     /(?:[0-9A-F]{2}:){5}[0-9A-F]{2}/g,
 
-
     /(?:[0-9A-F]{2}-){5}[0-9A-F]{2}/g,
-
 
     /\b[0-9A-F]{4}\.[0-9A-F]{4}\.[0-9A-F]{4}\b/g
 
-
   ];
-
 
 
   for (
@@ -3195,7 +4183,6 @@ function extractStrictLocalMac(
       );
 
 
-
     if (
       matches &&
       matches.length
@@ -3207,7 +4194,6 @@ function extractStrictLocalMac(
         normalizeMac(
           matches[0]
         );
-
 
 
       if (
@@ -3225,7 +4211,6 @@ function extractStrictLocalMac(
 
 
   }
-
 
 
   return null;
@@ -3258,9 +4243,7 @@ function clearMacResult() {
     input.value =
       '';
 
-
   }
-
 
 
   const validation =
@@ -3278,9 +4261,7 @@ function clearMacResult() {
     validation.textContent =
       '';
 
-
   }
-
 
 
   const saveBtn =
@@ -3298,9 +4279,7 @@ function clearMacResult() {
     saveBtn.disabled =
       true;
 
-
   }
-
 
 
   setMacState(
@@ -3317,7 +4296,7 @@ function clearMacResult() {
 
 /**
  * ============================================================
- * REJECT MAC RESULT
+ * REJECT RESULT
  * ============================================================
  */
 
@@ -3329,7 +4308,6 @@ function rejectMacResult(
   resetVerification();
 
 
-
   const input =
 
     document.getElementById(
@@ -3337,20 +4315,33 @@ function rejectMacResult(
     );
 
 
-  input.value =
-    '';
+  if (
+    input
+  ) {
 
 
+    input.value =
+      '';
 
-  document
+  }
 
-    .getElementById(
+
+  const saveBtn =
+
+    document.getElementById(
       'saveBtn'
-    )
+    );
 
-    .disabled =
-    true;
 
+  if (
+    saveBtn
+  ) {
+
+
+    saveBtn.disabled =
+      true;
+
+  }
 
 
   const validation =
@@ -3360,15 +4351,20 @@ function rejectMacResult(
     );
 
 
-  validation.textContent =
+  if (
+    validation
+  ) {
 
-    'No verified MAC Address';
+
+    validation.textContent =
+
+      'No verified MAC Address';
 
 
+    validation.style.color =
+      '#d63b3b';
 
-  validation.style.color =
-    '#d63b3b';
-
+  }
 
 
   setMacState(
@@ -3380,11 +4376,9 @@ function rejectMacResult(
   );
 
 
-
   setOCRStatus(
     false
   );
-
 
 
   showMessage(
@@ -3417,9 +4411,7 @@ function normalizeMac(
 
     return null;
 
-
   }
-
 
 
   const clean =
@@ -3437,7 +4429,6 @@ function normalizeMac(
       );
 
 
-
   if (
 
     !/^[0-9A-F]{12}$/
@@ -3450,9 +4441,7 @@ function normalizeMac(
 
     return null;
 
-
   }
-
 
 
   return clean
@@ -3492,9 +4481,7 @@ function handleMacInput() {
 
     return;
 
-
   }
-
 
 
   let raw =
@@ -3512,7 +4499,6 @@ function handleMacInput() {
       );
 
 
-
   raw =
 
     raw.substring(
@@ -3521,10 +4507,8 @@ function handleMacInput() {
     );
 
 
-
   const groups =
     [];
-
 
 
   for (
@@ -3554,13 +4538,11 @@ function handleMacInput() {
   }
 
 
-
   input.value =
 
     groups.join(
       ':'
     );
-
 
 
   macVerification = {
@@ -3590,7 +4572,6 @@ function handleMacInput() {
   };
 
 
-
   validateMacUI();
 
 }
@@ -3613,13 +4594,11 @@ function updateVerifiedMacUI() {
     );
 
 
-
   const mac =
 
     normalizeMac(
       input.value
     );
-
 
 
   if (
@@ -3629,14 +4608,11 @@ function updateVerifiedMacUI() {
 
     return;
 
-
   }
-
 
 
   input.value =
     mac;
-
 
 
   setMacState(
@@ -3648,7 +4624,6 @@ function updateVerifiedMacUI() {
   );
 
 
-
   const validation =
 
     document.getElementById(
@@ -3656,54 +4631,63 @@ function updateVerifiedMacUI() {
     );
 
 
-
-  let text =
-
-    macVerification.engine ||
-    'OCR';
-
-
-
-  text +=
-
-    ' • Confidence: ' +
-    macVerification.confidence;
-
-
-
   if (
-    macVerification.votes
+    validation
   ) {
+
+
+    let text =
+
+      macVerification.engine ||
+      'OCR';
 
 
     text +=
 
-      ' • Confirmed: ' +
-      macVerification.votes;
+      ' • Confidence: ' +
+      macVerification.confidence;
 
+
+    if (
+      macVerification.votes
+    ) {
+
+
+      text +=
+
+        ' • Confirmed: ' +
+        macVerification.votes;
+
+
+    }
+
+
+    validation.textContent =
+      text;
+
+
+    validation.style.color =
+      '#16864b';
 
   }
 
 
+  const saveBtn =
 
-  validation.textContent =
-    text;
-
-
-
-  validation.style.color =
-    '#16864b';
-
-
-
-  document
-
-    .getElementById(
+    document.getElementById(
       'saveBtn'
-    )
+    );
 
-    .disabled =
-    false;
+
+  if (
+    saveBtn
+  ) {
+
+
+    saveBtn.disabled =
+      false;
+
+  }
 
 }
 
@@ -3711,7 +4695,7 @@ function updateVerifiedMacUI() {
 
 /**
  * ============================================================
- * VALIDATION
+ * VALIDATE MAC UI
  * ============================================================
  */
 
@@ -3725,13 +4709,11 @@ function validateMacUI() {
     );
 
 
-
   const saveBtn =
 
     document.getElementById(
       'saveBtn'
     );
-
 
 
   const validation =
@@ -3741,13 +4723,22 @@ function validateMacUI() {
     );
 
 
+  if (
+    !input ||
+    !saveBtn
+  ) {
+
+
+    return false;
+
+  }
+
 
   const mac =
 
     normalizeMac(
       input.value
     );
-
 
 
   if (
@@ -3757,7 +4748,6 @@ function validateMacUI() {
 
     input.value =
       mac;
-
 
 
     if (
@@ -3770,9 +4760,7 @@ function validateMacUI() {
 
       return true;
 
-
     }
-
 
 
     setMacState(
@@ -3784,28 +4772,29 @@ function validateMacUI() {
     );
 
 
-
-    validation.textContent =
-
-      'Valid MAC format • Verify before saving';
-
+    if (
+      validation
+    ) {
 
 
-    validation.style.color =
-      '#16864b';
+      validation.textContent =
 
+        'Valid MAC format • Verify before saving';
+
+
+      validation.style.color =
+        '#16864b';
+
+    }
 
 
     saveBtn.disabled =
       false;
 
 
-
     return true;
 
-
   }
-
 
 
   if (
@@ -3813,9 +4802,15 @@ function validateMacUI() {
   ) {
 
 
-    validation.textContent =
-      '';
+    if (
+      validation
+    ) {
 
+
+      validation.textContent =
+        '';
+
+    }
 
 
     setMacState(
@@ -3830,15 +4825,20 @@ function validateMacUI() {
   } else {
 
 
-    validation.textContent =
+    if (
+      validation
+    ) {
 
-      'Incomplete or invalid MAC Address';
+
+      validation.textContent =
+
+        'Incomplete or invalid MAC Address';
 
 
+      validation.style.color =
+        '#d63b3b';
 
-    validation.style.color =
-      '#d63b3b';
-
+    }
 
 
     setMacState(
@@ -3849,14 +4849,11 @@ function validateMacUI() {
 
     );
 
-
   }
-
 
 
   saveBtn.disabled =
     true;
-
 
 
   return false;
@@ -3890,9 +4887,7 @@ function saveAndNext() {
 
     return;
 
-
   }
-
 
 
   const btn =
@@ -3902,81 +4897,60 @@ function saveAndNext() {
     );
 
 
-
   btn.disabled =
     true;
-
 
 
   btn.textContent =
     'SAVING...';
 
 
-
   const params = {
-
 
     api:
       'v11',
 
-
     action:
       'saveMac',
-
 
     mac:
 
       document
-
         .getElementById(
           'macInput'
         )
-
         .value,
-
 
     device:
 
       document
-
         .getElementById(
           'deviceType'
         )
-
         .value,
-
 
     location:
 
       document
-
         .getElementById(
           'location'
         )
-
         .value,
-
 
     note:
 
       document
-
         .getElementById(
           'note'
         )
-
         .value
-
 
   };
 
 
-
   apiRequest(
 
-
     params,
-
 
     function (
       result
@@ -3985,7 +4959,6 @@ function saveAndNext() {
 
       btn.textContent =
         'SAVE & SCAN NEXT';
-
 
 
       if (
@@ -4003,7 +4976,6 @@ function saveAndNext() {
           result.count;
 
 
-
         document
 
           .getElementById(
@@ -4012,7 +4984,6 @@ function saveAndNext() {
 
           .value =
           '';
-
 
 
         document
@@ -4025,13 +4996,10 @@ function saveAndNext() {
           '';
 
 
-
         resetVerification();
 
 
-
         validateMacUI();
-
 
 
         showMessage(
@@ -4044,13 +5012,10 @@ function saveAndNext() {
         );
 
 
-
         vibrateSuccess();
 
 
-
         loadDashboard();
-
 
 
         window.scrollTo({
@@ -4076,12 +5041,10 @@ function saveAndNext() {
           false;
 
 
-
         let message =
 
           'Duplicate: ' +
           result.mac;
-
 
 
         if (
@@ -4105,7 +5068,6 @@ function saveAndNext() {
         }
 
 
-
         if (
 
           result.existing &&
@@ -4127,7 +5089,6 @@ function saveAndNext() {
         }
 
 
-
         showMessage(
 
           message,
@@ -4144,10 +5105,10 @@ function saveAndNext() {
           false;
 
 
-
         showMessage(
 
           result.message ||
+
           'Save failed.',
 
           'error'
@@ -4157,9 +5118,7 @@ function saveAndNext() {
 
       }
 
-
     },
-
 
     function () {
 
@@ -4168,13 +5127,10 @@ function saveAndNext() {
         'SAVE & SCAN NEXT';
 
 
-
       btn.disabled =
         false;
 
-
     }
-
 
   );
 
@@ -4193,7 +5149,6 @@ function loadDashboard() {
 
   apiRequest(
 
-
     {
 
       api:
@@ -4203,7 +5158,6 @@ function loadDashboard() {
         'dashboard'
 
     },
-
 
     function (
       data
@@ -4217,22 +5171,27 @@ function loadDashboard() {
 
         return;
 
-
       }
 
 
+      const counter =
 
-      document
-
-        .getElementById(
+        document.getElementById(
           'deviceCount'
-        )
+        );
 
-        .textContent =
 
-        data.count ||
-        0;
+      if (
+        counter
+      ) {
 
+
+        counter.textContent =
+
+          data.count ||
+          0;
+
+      }
 
 
       renderRecent(
@@ -4242,9 +5201,7 @@ function loadDashboard() {
 
       );
 
-
     }
-
 
   );
 
@@ -4254,7 +5211,7 @@ function loadDashboard() {
 
 /**
  * ============================================================
- * APPS SCRIPT JSONP API
+ * APPS SCRIPT JSONP
  * ============================================================
  */
 
@@ -4279,7 +5236,9 @@ function apiRequest(
 
 
     console.warn(
-      'Apps Script API URL not configured.'
+
+      'Apps Script API URL is not configured.'
+
     );
 
 
@@ -4291,7 +5250,7 @@ function apiRequest(
 
       showMessage(
 
-        'Google Sheets API URL is not configured in app.js.',
+        'Google Sheets API URL is not configured.',
 
         'error'
 
@@ -4308,14 +5267,12 @@ function apiRequest(
 
       onError();
 
-
     }
 
 
     return;
 
   }
-
 
 
   const callbackName =
@@ -4334,7 +5291,6 @@ function apiRequest(
     );
 
 
-
   const script =
 
     document.createElement(
@@ -4342,10 +5298,8 @@ function apiRequest(
     );
 
 
-
   let finished =
     false;
-
 
 
   const timeout =
@@ -4362,18 +5316,14 @@ function apiRequest(
 
           return;
 
-
         }
-
 
 
         finished =
           true;
 
 
-
         cleanup();
-
 
 
         if (
@@ -4394,14 +5344,12 @@ function apiRequest(
         }
 
 
-
         if (
           onError
         ) {
 
 
           onError();
-
 
         }
 
@@ -4413,7 +5361,6 @@ function apiRequest(
     );
 
 
-
   function cleanup() {
 
 
@@ -4422,11 +5369,9 @@ function apiRequest(
     );
 
 
-
     delete window[
       callbackName
     ];
-
 
 
     if (
@@ -4434,8 +5379,7 @@ function apiRequest(
     ) {
 
 
-      script
-        .parentNode
+      script.parentNode
         .removeChild(
           script
         );
@@ -4443,9 +5387,7 @@ function apiRequest(
 
     }
 
-
   }
-
 
 
   window[
@@ -4464,18 +5406,14 @@ function apiRequest(
 
         return;
 
-
       }
-
 
 
       finished =
         true;
 
 
-
       cleanup();
-
 
 
       if (
@@ -4487,17 +5425,14 @@ function apiRequest(
           data
         );
 
-
       }
 
 
     };
 
 
-
   parameters.callback =
     callbackName;
-
 
 
   const query =
@@ -4507,7 +5442,6 @@ function apiRequest(
     );
 
 
-
   script.src =
 
     API_URL +
@@ -4515,7 +5449,6 @@ function apiRequest(
     '?' +
 
     query.toString();
-
 
 
   script.onerror =
@@ -4530,18 +5463,14 @@ function apiRequest(
 
         return;
 
-
       }
-
 
 
       finished =
         true;
 
 
-
       cleanup();
-
 
 
       if (
@@ -4562,7 +5491,6 @@ function apiRequest(
       }
 
 
-
       if (
         onError
       ) {
@@ -4570,12 +5498,10 @@ function apiRequest(
 
         onError();
 
-
       }
 
 
     };
-
 
 
   document.body
@@ -4605,6 +5531,15 @@ function renderRecent(
     );
 
 
+  if (
+    !container
+  ) {
+
+
+    return;
+
+  }
+
 
   if (
 
@@ -4625,11 +5560,9 @@ function renderRecent(
       '</div>';
 
 
-
     return;
 
   }
-
 
 
   container.innerHTML =
@@ -4708,7 +5641,7 @@ function renderRecent(
 
 /**
  * ============================================================
- * OCR STATUS UI
+ * OCR STATUS
  * ============================================================
  */
 
@@ -4730,6 +5663,15 @@ function setOCRStatus(
     );
 
 
+  if (
+    !box
+  ) {
+
+
+    return;
+
+  }
+
 
   if (
     !show
@@ -4746,36 +5688,51 @@ function setOCRStatus(
   }
 
 
-
   box.classList.remove(
     'hidden'
   );
 
 
+  const titleElement =
 
-  document
-
-    .getElementById(
+    document.getElementById(
       'ocrTitle'
-    )
-
-    .textContent =
-
-    title ||
-    'Reading...';
+    );
 
 
+  if (
+    titleElement
+  ) {
 
-  document
 
-    .getElementById(
+    titleElement.textContent =
+
+      title ||
+
+      'Reading...';
+
+  }
+
+
+  const progressElement =
+
+    document.getElementById(
       'ocrProgress'
-    )
+    );
 
-    .textContent =
 
-    progress ||
-    '';
+  if (
+    progressElement
+  ) {
+
+
+    progressElement.textContent =
+
+      progress ||
+
+      '';
+
+  }
 
 }
 
@@ -4803,12 +5760,20 @@ function setMacState(
     );
 
 
+  if (
+    !state
+  ) {
+
+
+    return;
+
+  }
+
 
   state.className =
 
     'macState ' +
     type;
-
 
 
   state.textContent =
@@ -4820,7 +5785,7 @@ function setMacState(
 
 /**
  * ============================================================
- * SYSTEM STATUS
+ * MAIN SYSTEM STATUS
  * ============================================================
  */
 
@@ -4840,7 +5805,6 @@ function setSystemStatus(
     );
 
 
-
   if (
     !status
   ) {
@@ -4848,9 +5812,7 @@ function setSystemStatus(
 
     return;
 
-
   }
-
 
 
   status.innerHTML =
@@ -4862,13 +5824,11 @@ function setSystemStatus(
     );
 
 
-
   const dot =
 
     status.querySelector(
       '.statusDot'
     );
-
 
 
   if (
@@ -4883,7 +5843,6 @@ function setSystemStatus(
         ? '#4cea92'
 
         : '#ff7474';
-
 
   }
 
@@ -4913,10 +5872,27 @@ function showMessage(
     );
 
 
+  if (
+    !box
+  ) {
+
+
+    console.log(
+
+      type,
+
+      message
+
+    );
+
+
+    return;
+
+  }
+
 
   box.className =
     'messageBox';
-
 
 
   if (
@@ -4952,16 +5928,13 @@ function showMessage(
   }
 
 
-
   box.textContent =
     message;
-
 
 
   box.classList.remove(
     'hidden'
   );
-
 
 
   setTimeout(
@@ -5008,7 +5981,6 @@ function vibrateSuccess() {
 
     );
 
-
   }
 
 }
@@ -5038,7 +6010,6 @@ function escapeHtml(
     return '';
 
   }
-
 
 
   return String(
