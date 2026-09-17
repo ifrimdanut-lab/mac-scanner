@@ -1,7 +1,7 @@
 /**
  * ==========================================================
  * ICHC MAC Scanner
- * Version V1.3.2.4
+ * Version V1.3.2.5
  *
  * LAYOUT:
  * 1. LIVE MAC SCAN
@@ -15,7 +15,7 @@
  * ==========================================================
  */
 
-const APP_VERSION = 'V1.3.2.4';
+const APP_VERSION = 'V1.3.2.5';
 
 
 /* ==========================================================
@@ -23,7 +23,7 @@ const APP_VERSION = 'V1.3.2.4';
 ========================================================== */
 
 const GOOGLE_API_URL =
-  'https://script.google.com/a/macros/ichc.ro/s/AKfycbymTgShnoA9obZCt3lse6UzGnbYk26skD9CgxJPciPnsUKr7AQ0OlL72PJLUSkvZ3U7iQ/exec';
+  'https://script.google.com/macros/s/AKfycbymTgShnoA9obZCt3lse6UzGnbYk26skD9CgxJPciPnsUKr7AQ0OlL72PJLUSkvZ3U7iQ/exec';
 
 
 const OCR_CONNECTION_NAME =
@@ -163,7 +163,7 @@ document.addEventListener(
 
 
 /* ==========================================================
-   V1.3.2.4 - EXACT LAYOUT REORDER
+   V1.3.2.5 - EXACT LAYOUT REORDER
 ========================================================== */
 
 function reorderApplicationLayout() {
