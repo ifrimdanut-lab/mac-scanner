@@ -23,7 +23,7 @@ const APP_VERSION = 'V1.3.2.2';
 ========================================================== */
 
 const GOOGLE_API_URL =
-  'https://script.google.com/a/macros/ichc.ro/s/AKfycbZDAauThmGXzKtRIYZMbgutyJI3XO_r5uRLuLhqTG8putr6wpGcfE38_dmYmdEi9XY/exec';
+  'https://script.google.com/a/macros/ichc.ro/s/AKfycbzGyMEsqyKS8vC1oN72mB4tbwLkURbhCg9UhOh5TVG32AsuoRCGgO7HM0VI__XTP4Ff/exec';
 
 
 const OCR_CONNECTION_NAME =
