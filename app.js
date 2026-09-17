@@ -9,8 +9,7 @@
  * 3. LARGE MAC RESULT
  * 4. OCR RESULT / DEVICE DATA
  * 5. REMAINING CAMERA CONTROLS / OTHER CONTENT
- * 6. LOCAL PADDLEOCR
- * 7. RECENT SCANS - LAST
+ * 6. LOCAL PADDLEOCR - LAST
  *
  * OCR engine / speed unchanged from V1.3.0.
  * ==========================================================
@@ -24,7 +23,7 @@ const APP_VERSION = 'V1.3.2.2';
 ========================================================== */
 
 const GOOGLE_API_URL =
-  'https://script.google.com/a/macros/ichc.ro/s/AKfycbymTgShnoA9obZCt3lse6UzGnbYk26skD9CgxJPciPnsUKr7AQ0OlL72PJLUSkvZ3U7iQ/exec';
+  'https://script.google.com/macros/s/AKfycby-tRmhkTfmpB3mnvbmsrMB5zcQodmBugNNBaLA-k4R_xn4q44jOPYEEirHP7ykoMDntg/exec';
 
 
 const OCR_CONNECTION_NAME =
@@ -172,8 +171,6 @@ function reorderApplicationLayout() {
   arrangePrimaryScannerFlow();
 
   movePaddleOCRSectionToBottom();
-
-  moveRecentScansSectionToBottom();
 }
 
 
@@ -443,11 +440,19 @@ function arrangePrimaryScannerFlow() {
   }
 
 
+  /*
+   * 1. LIVE MAC SCAN first
+   */
+
   workspace.insertBefore(
     livePanel,
     workspace.firstElementChild
   );
 
+
+  /*
+   * 2. CAMERA immediately after LIVE
+   */
 
   livePanel.insertAdjacentElement(
     'afterend',
@@ -455,11 +460,19 @@ function arrangePrimaryScannerFlow() {
   );
 
 
+  /*
+   * 3. LARGE MAC immediately after camera
+   */
+
   cameraView.insertAdjacentElement(
     'afterend',
     compact
   );
 
+
+  /*
+   * 4. OCR Result immediately after MAC
+   */
 
   compact.insertAdjacentElement(
     'afterend',
@@ -583,7 +596,7 @@ function findSectionByHeadingText(
 
 
 /* ==========================================================
-   LOCAL PADDLEOCR
+   LOCAL PADDLEOCR -> LAST
 ========================================================== */
 
 function findPaddleOCRCard() {
@@ -671,50 +684,6 @@ function movePaddleOCRSectionToBottom() {
 
   paddleCard.style.marginBottom =
     '20px';
-}
-
-
-/* ==========================================================
-   RECENT SCANS -> LAST
-========================================================== */
-
-function moveRecentScansSectionToBottom() {
-
-  const recentCard =
-    findSectionByHeadingText(
-      'Recent Scans'
-    );
-
-
-  if (
-    !recentCard ||
-    !recentCard.parentElement
-  ) {
-
-    console.warn(
-      'V1.3.2.2: Recent Scans section not found.'
-    );
-
-    return;
-  }
-
-
-  recentCard.parentElement.appendChild(
-    recentCard
-  );
-
-
-  recentCard.style.marginTop =
-    '20px';
-
-
-  recentCard.style.marginBottom =
-    '20px';
-
-
-  console.log(
-    'V1.3.2.2 layout: Recent Scans moved to last position.'
-  );
 }
 
 
@@ -894,6 +863,8 @@ function createCompactMacResultUI() {
     'waiting'
   );
 }
+
+
 /* ==========================================================
    UPDATE COMPACT MAC RESULT
 ========================================================== */
@@ -1895,13 +1866,6 @@ async function performLiveOCR() {
             'POST',
 
           body:
-            form,
-
-          cache:
-            'no-store'
-        }
-      );
-               body:
             form,
 
           cache:
@@ -2930,6 +2894,8 @@ async function switchCamera() {
     ].deviceId
   );
 }
+
+
 /* ==========================================================
    MANUAL FRAME
 ========================================================== */
@@ -3932,6 +3898,8 @@ function normalizeMac(
       ':'
     );
 }
+
+
 /* ==========================================================
    RESET
 ========================================================== */
