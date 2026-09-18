@@ -1,7 +1,7 @@
 /**
  * ==========================================================
  * ICHC MAC Scanner
- * Version V1.3.2.5
+ * Version V1.3.2.8
  *
  * LAYOUT:
  * 1. LIVE MAC SCAN
@@ -15,7 +15,7 @@
  * ==========================================================
  */
 
-const APP_VERSION = 'V1.3.2.5';
+const APP_VERSION = 'V1.3.2.8';
 
 
 /* ==========================================================
@@ -49,7 +49,7 @@ const LIVE_SCAN_INTERVAL_MS =
 
 
 const LIVE_CONFIRMATION_COUNT =
-  2;
+  1;
 
 
 const LIVE_CAPTURE_MAX_WIDTH =
@@ -163,7 +163,7 @@ document.addEventListener(
 
 
 /* ==========================================================
-   V1.3.2.5 - EXACT LAYOUT REORDER
+   V1.3.2.2 - EXACT LAYOUT REORDER
 ========================================================== */
 
 function reorderApplicationLayout() {
@@ -705,10 +705,6 @@ function moveRecentScansSectionToBottom() {
     !recentCard ||
     !recentCard.parentElement
   ) {
-
-    console.warn(
-      'V1.3.2.3: Recent Scans section not found.'
-    );
 
     return;
   }
@@ -2193,14 +2189,51 @@ function completeLiveDetection(
   );
 
 
+  const normalizedMac =
+    normalizeMac(
+      mac
+    );
+
+
+  if (
+    !normalizedMac
+  ) {
+
+    showMessage(
+      'Live Scan found an invalid MAC.',
+      'error'
+    );
+
+    return;
+  }
+
+
+  const input =
+    document.getElementById(
+      'macInput'
+    );
+
+
+  if (
+    input
+  ) {
+
+    input.value =
+      normalizedMac;
+  }
+
+
   selectCandidate(
-    mac
+    normalizedMac
   );
 
 
+  confirmMac();
+
+
   updateCompactMacResult(
-    mac,
-    'detected'
+    normalizedMac,
+    'confirmed'
   );
 
 
@@ -2215,7 +2248,7 @@ function completeLiveDetection(
   ) {
 
     validation.textContent =
-      'Live Scan detected the same MAC twice. Verify and confirm.';
+      'Live Scan detected and auto-confirmed the MAC. Saving automatically...';
 
 
     validation.style.color =
@@ -2224,21 +2257,36 @@ function completeLiveDetection(
 
 
   updateLiveStatus(
-    '✓ MAC DETECTED',
+    '✓ AUTO-SAVING',
     LIVE_CONFIRMATION_COUNT
   );
 
 
-  showMessage(
-    'MAC detected: ' +
-    mac +
-    ' • ' +
-    (
-      result.processingSeconds ??
-      '?'
-    ) +
-    ' s OCR',
-    'success'
+  const saveButton =
+    document.getElementById(
+      'saveBtn'
+    );
+
+
+  if (
+    saveButton
+  ) {
+
+    saveButton.disabled =
+      true;
+
+    saveButton.textContent =
+      'AUTO SAVING...';
+  }
+
+
+  setTimeout(
+    function () {
+
+      saveAndNext();
+
+    },
+    150
   );
 }
 
@@ -4160,7 +4208,7 @@ function saveAndNext() {
 
 
         showSaveSuccess(
-          'Saved: ' +
+          'Saved automatically: ' +
           result.mac
         );
 
@@ -4186,6 +4234,107 @@ function saveAndNext() {
 
     function () {
 
+      verifySavedMacAfterConnectionFailure(
+        mac,
+        button
+      );
+    }
+  );
+}
+
+
+/* ==========================================================
+   RELIABLE SAVE VERIFICATION
+========================================================== */
+
+function verifySavedMacAfterConnectionFailure(
+  mac,
+  button
+) {
+
+  apiRequest(
+    {
+      api:
+        'v11',
+
+      action:
+        'dashboard'
+    },
+
+    function (
+      data
+    ) {
+
+      const found =
+        Boolean(
+          data &&
+          data.success &&
+          Array.isArray(
+            data.recent
+          ) &&
+          data.recent.some(
+            function (
+              item
+            ) {
+
+              return (
+                normalizeMac(
+                  item.mac
+                ) ===
+                mac
+              );
+            }
+          )
+        );
+
+
+      if (
+        found
+      ) {
+
+        if (
+          button
+        ) {
+
+          button.textContent =
+            'SAVE & SCAN NEXT';
+        }
+
+
+        resetMacState();
+
+        renderRecent(
+          data.recent ||
+          []
+        );
+
+
+        const count =
+          document.getElementById(
+            'deviceCount'
+          );
+
+
+        if (
+          count
+        ) {
+
+          count.textContent =
+            data.count ||
+            0;
+        }
+
+
+        showSaveSuccess(
+          'Saved: ' +
+          mac
+        );
+
+
+        return;
+      }
+
+
       if (
         button
       ) {
@@ -4193,6 +4342,25 @@ function saveAndNext() {
         button.textContent =
           'SAVE & SCAN NEXT';
 
+        button.disabled =
+          false;
+      }
+
+
+      showMessage(
+        'Could not confirm the save. Please try again.',
+        'error'
+      );
+    },
+
+    function () {
+
+      if (
+        button
+      ) {
+
+        button.textContent =
+          'SAVE & SCAN NEXT';
 
         button.disabled =
           false;
@@ -4200,7 +4368,7 @@ function saveAndNext() {
 
 
       showMessage(
-        'Could not connect to Google Apps Script.',
+        'Could not connect to Google Apps Script after 3 attempts.',
         'error'
       );
     }
@@ -4270,83 +4438,128 @@ function apiRequest(
   onError
 ) {
 
-  const callbackName =
-    '__macCallback_' +
-    Date.now() +
-    '_' +
-    Math.floor(
-      Math.random() *
-      100000
+  const originalParameters =
+    Object.assign(
+      {},
+      parameters
     );
 
 
-  const script =
-    document.createElement(
-      'script'
-    );
+  const isSaveRequest =
+    originalParameters.action ===
+    'saveMac';
 
 
-  let finished =
-    false;
+  const maxAttempts =
+    isSaveRequest
+      ? 1
+      : 3;
 
 
-  const timeout =
-    setTimeout(
-      function () {
-
-        if (
-          finished
-        ) {
-
-          return;
-        }
+  const retryDelays = [
+    0,
+    800,
+    1600
+  ];
 
 
-        finished =
-          true;
+  const timeoutMs =
+    25000;
 
 
-        cleanup();
+  let attempt =
+    0;
 
 
-        if (
-          onError
-        ) {
+  function runAttempt() {
 
-          onError();
-        }
-      },
-      15000
-    );
+    attempt++;
 
 
-  function cleanup() {
-
-    clearTimeout(
-      timeout
-    );
-
-
-    delete window[
-      callbackName
-    ];
-
-
-    if (
-      script.parentNode
-    ) {
-
-      script.parentNode.removeChild(
-        script
+    const callbackName =
+      '__macCallback_' +
+      Date.now() +
+      '_' +
+      attempt +
+      '_' +
+      Math.floor(
+        Math.random() *
+        100000
       );
+
+
+    const script =
+      document.createElement(
+        'script'
+      );
+
+
+    let finished =
+      false;
+
+
+    const requestParameters =
+      Object.assign(
+        {},
+        originalParameters,
+        {
+          callback:
+            callbackName,
+
+          _retry:
+            Date.now()
+        }
+      );
+
+
+    const timeout =
+      setTimeout(
+        function () {
+
+          failAttempt(
+            'timeout'
+          );
+        },
+        timeoutMs
+      );
+
+
+    function cleanup() {
+
+      clearTimeout(
+        timeout
+      );
+
+
+      try {
+
+        delete window[
+          callbackName
+        ];
+
+      } catch (
+        error
+      ) {
+
+        window[
+          callbackName
+        ] =
+          undefined;
+      }
+
+
+      if (
+        script.parentNode
+      ) {
+
+        script.parentNode.removeChild(
+          script
+        );
+      }
     }
-  }
 
 
-  window[
-    callbackName
-  ] =
-    function (
+    function succeed(
       data
     ) {
 
@@ -4373,23 +4586,12 @@ function apiRequest(
           data
         );
       }
-    };
+    }
 
 
-  parameters.callback =
-    callbackName;
-
-
-  script.src =
-    GOOGLE_API_URL +
-    '?' +
-    new URLSearchParams(
-      parameters
-    ).toString();
-
-
-  script.onerror =
-    function () {
+    function failAttempt(
+      reason
+    ) {
 
       if (
         finished
@@ -4406,18 +4608,79 @@ function apiRequest(
       cleanup();
 
 
+      console.warn(
+        'Google API attempt ' +
+        attempt +
+        ' failed: ' +
+        reason
+      );
+
+
+      if (
+        attempt <
+        maxAttempts
+      ) {
+
+        const delay =
+          retryDelays[
+            attempt
+          ] ||
+          1600;
+
+
+        setTimeout(
+          runAttempt,
+          delay
+        );
+
+
+        return;
+      }
+
+
       if (
         onError
       ) {
 
         onError();
       }
-    };
+    }
 
 
-  document.body.appendChild(
-    script
-  );
+    window[
+      callbackName
+    ] =
+      succeed;
+
+
+    script.async =
+      true;
+
+
+    script.src =
+      GOOGLE_API_URL +
+      '?' +
+      new URLSearchParams(
+        requestParameters
+      ).toString();
+
+
+    script.onerror =
+      function () {
+
+        failAttempt(
+          'script error'
+        );
+      };
+
+
+    document.body.appendChild(
+      script
+    );
+  }
+
+
+  runAttempt();
 }
 
 
@@ -4659,8 +4922,6 @@ function setSystemStatus(
 
 /* ==========================================================
    SAVE SUCCESS MESSAGE
-   Shows only the successful save confirmation
-   directly below SAVE & SCAN NEXT.
 ========================================================== */
 
 function showSaveSuccess(
