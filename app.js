@@ -1,7 +1,7 @@
 /**
  * ==========================================================
  * ICHC MAC Scanner
- * Version V1.3.2.8
+ * Version V1.3.2.9
  *
  * LAYOUT:
  * 1. LIVE MAC SCAN
@@ -15,7 +15,7 @@
  * ==========================================================
  */
 
-const APP_VERSION = 'V1.3.2.8';
+const APP_VERSION = 'V1.3.2.9';
 
 
 /* ==========================================================
@@ -2248,7 +2248,7 @@ function completeLiveDetection(
   ) {
 
     validation.textContent =
-      'Live Scan detected and auto-confirmed the MAC. Saving automatically...';
+      'Live Scan detected and auto-confirmed the MAC. Verify it, then press SAVE & SCAN NEXT.';
 
 
     validation.style.color =
@@ -2257,36 +2257,16 @@ function completeLiveDetection(
 
 
   updateLiveStatus(
-    '✓ AUTO-SAVING',
+    '✓ AUTO-CONFIRMED',
     LIVE_CONFIRMATION_COUNT
   );
 
 
-  const saveButton =
-    document.getElementById(
-      'saveBtn'
-    );
-
-
-  if (
-    saveButton
-  ) {
-
-    saveButton.disabled =
-      true;
-
-    saveButton.textContent =
-      'AUTO SAVING...';
-  }
-
-
-  setTimeout(
-    function () {
-
-      saveAndNext();
-
-    },
-    150
+  showMessage(
+    'MAC auto-confirmed: ' +
+    normalizedMac +
+    ' • Verify and save',
+    'success'
   );
 }
 
@@ -4208,7 +4188,7 @@ function saveAndNext() {
 
 
         showSaveSuccess(
-          'Saved automatically: ' +
+          'Saved: ' +
           result.mac
         );
 
